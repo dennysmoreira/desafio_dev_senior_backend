@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fiscal.Application\Fiscal.Application.csproj" />
+  </ItemGroup>
+
+  <!-- EF Core, Npgsql e RabbitMQ.Client só existem aqui. Nenhuma outra camada
+       referencia esses pacotes — regra verificada em Fiscal.ArchitectureTests. -->
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="Polly.Core" />
+  </ItemGroup>
+
+</Project>

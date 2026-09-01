@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Sem PackageReference por decisão de arquitetura: o domínio não depende de
+       framework algum. A regra é verificada em Fiscal.ArchitectureTests. -->
+
+</Project>
