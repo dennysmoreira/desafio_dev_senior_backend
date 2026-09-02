@@ -3,24 +3,23 @@ using Fiscal.Domain.Comum;
 namespace Fiscal.Domain.Documentos;
 
 /// <summary>
-/// Documento fiscal recebido. A modelagem separa deliberadamente duas naturezas:
+/// Documento fiscal recebido. A modelagem separa duas naturezas:
 ///
 ///   1. O documento fiscal em si (chave, emitente, destinatário, valores, itens,
 ///      XML original) é IMUTÁVEL. Documento autorizado não se altera — corrige-se
 ///      por carta de correção ou cancela-se, ambos eventos que geram outro XML.
-///      Por isso não existe setter público nem método que altere esses campos.
+///      Não existe setter público nem método que altere esses campos.
 ///
-///   2. Os metadados de gestão (observação, tags, status de conciliação) nascem
-///      do nosso processo, não do Fisco, e são livremente mutáveis.
+///   2. A observação é anotação interna de quem recebeu o documento. Nasce do
+///      nosso processo, não do Fisco, e por isso é o único campo mutável.
 ///
-/// O PUT da API opera exclusivamente sobre (2). A restrição é estrutural, não
-/// convencional: não há caminho no código para sobrescrever (1).
+/// O PUT da API opera exclusivamente sobre (2).
 /// </summary>
-public sealed class FiscalDocument
+public sealed class DocumentoFiscal
 {
-    private readonly List<FiscalDocumentItem> _itens = [];
+    private readonly List<ItemDocumentoFiscal> _itens = [];
 
-    private FiscalDocument()
+    private DocumentoFiscal()
     {
     }
 
@@ -65,15 +64,11 @@ public sealed class FiscalDocument
     /// </summary>
     public byte[] XmlBruto { get; private set; } = [];
 
-    public IReadOnlyCollection<FiscalDocumentItem> Itens => _itens.AsReadOnly();
+    public IReadOnlyCollection<ItemDocumentoFiscal> Itens => _itens.AsReadOnly();
 
-    // ---- Metadados de gestão: mutáveis ----------------------------------
+    // ---- Único campo mutável --------------------------------------------
 
     public string? Observacao { get; private set; }
-
-    public string[] Tags { get; private set; } = [];
-
-    public StatusConciliacao Status { get; private set; }
 
     // ---- Auditoria e exclusão lógica ------------------------------------
 
@@ -90,9 +85,7 @@ public sealed class FiscalDocument
 
     public DateTimeOffset? ExcluidoEm { get; private set; }
 
-    public string? MotivoExclusao { get; private set; }
-
-    public static FiscalDocument Registrar(
+    public static DocumentoFiscal Registrar(
         TipoDocumentoFiscal tipo,
         string chaveAcesso,
         string numero,
@@ -106,7 +99,7 @@ public sealed class FiscalDocument
         decimal valorTotal,
         string hashConteudo,
         byte[] xmlBruto,
-        IEnumerable<FiscalDocumentItem> itens,
+        IEnumerable<ItemDocumentoFiscal> itens,
         DateTimeOffset agora)
     {
         if (string.IsNullOrWhiteSpace(chaveAcesso))
@@ -124,7 +117,7 @@ public sealed class FiscalDocument
             throw new DomainException("Documento sem conteúdo XML.");
         }
 
-        var documento = new FiscalDocument
+        var documento = new DocumentoFiscal
         {
             Id = Guid.CreateVersion7(),
             Tipo = tipo,
@@ -140,7 +133,6 @@ public sealed class FiscalDocument
             ValorTotal = valorTotal,
             HashConteudo = hashConteudo,
             XmlBruto = xmlBruto,
-            Status = StatusConciliacao.Pendente,
             RecebidoEm = agora,
             AtualizadoEm = agora,
         };
@@ -151,30 +143,19 @@ public sealed class FiscalDocument
     }
 
     /// <summary>Único caminho de mutação. Não toca em nenhum campo do documento fiscal.</summary>
-    public void AtualizarMetadados(
-        string? observacao,
-        string[] tags,
-        StatusConciliacao status,
-        DateTimeOffset agora)
+    public void AtualizarObservacao(string? observacao, DateTimeOffset agora)
     {
         if (Excluido)
         {
-            throw new DomainException("Documento excluído não aceita alteração de metadados.");
+            throw new DomainException("Documento excluído não aceita alteração.");
         }
 
         Observacao = observacao;
-        Tags = tags;
-        Status = status;
         AtualizadoEm = agora;
     }
 
-    public void Excluir(string motivo, DateTimeOffset agora)
+    public void Excluir(DateTimeOffset agora)
     {
-        if (string.IsNullOrWhiteSpace(motivo))
-        {
-            throw new DomainException("Exclusão exige motivo, para rastreabilidade da auditoria.");
-        }
-
         if (Excluido)
         {
             return;
@@ -182,7 +163,6 @@ public sealed class FiscalDocument
 
         Excluido = true;
         ExcluidoEm = agora;
-        MotivoExclusao = motivo;
         AtualizadoEm = agora;
     }
 }

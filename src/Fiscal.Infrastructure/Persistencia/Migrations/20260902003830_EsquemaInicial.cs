@@ -30,13 +30,10 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                     HashConteudo = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     XmlBruto = table.Column<byte[]>(type: "bytea", nullable: false),
                     Observacao = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    Tags = table.Column<string[]>(type: "text[]", nullable: false),
-                    Status = table.Column<int>(type: "integer", nullable: false),
                     RecebidoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     AtualizadoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     Excluido = table.Column<bool>(type: "boolean", nullable: false),
-                    ExcluidoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    MotivoExclusao = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true)
+                    ExcluidoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

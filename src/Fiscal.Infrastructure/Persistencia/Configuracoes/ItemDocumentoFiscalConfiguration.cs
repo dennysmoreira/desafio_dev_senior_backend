@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Fiscal.Infrastructure.Persistencia.Configuracoes;
 
-public sealed class FiscalDocumentItemConfiguration : IEntityTypeConfiguration<FiscalDocumentItem>
+public sealed class ItemDocumentoFiscalConfiguration : IEntityTypeConfiguration<ItemDocumentoFiscal>
 {
-    public void Configure(EntityTypeBuilder<FiscalDocumentItem> builder)
+    public void Configure(EntityTypeBuilder<ItemDocumentoFiscal> builder)
     {
         builder.ToTable("documento_fiscal_item");
 

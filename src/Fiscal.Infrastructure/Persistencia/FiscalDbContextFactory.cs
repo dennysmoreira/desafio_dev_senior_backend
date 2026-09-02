@@ -1,4 +1,5 @@
 using Fiscal.Application.Seguranca;
+using Fiscal.Infrastructure.Seguranca;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
@@ -20,6 +21,11 @@ public sealed class FiscalDbContextFactory : IDesignTimeDbContextFactory<FiscalD
         return new FiscalDbContext(options, new ContextoDeDesign());
     }
 
+    /// <summary>
+    /// Equivale a um escopo de sistema permanentemente aberto. Não usa
+    /// <see cref="ContextoAcesso"/> de propósito: geração de schema não tem log nem
+    /// requisição, e esta classe nunca é registrada no contêiner da aplicação.
+    /// </summary>
     private sealed class ContextoDeDesign : IContextoAcesso
     {
         public string? CnpjAutorizado => null;

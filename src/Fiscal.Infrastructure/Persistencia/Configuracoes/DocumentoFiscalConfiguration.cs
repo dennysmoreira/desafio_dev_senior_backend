@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Fiscal.Infrastructure.Persistencia.Configuracoes;
 
-public sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<FiscalDocument>
+public sealed class DocumentoFiscalConfiguration : IEntityTypeConfiguration<DocumentoFiscal>
 {
-    public void Configure(EntityTypeBuilder<FiscalDocument> builder)
+    public void Configure(EntityTypeBuilder<DocumentoFiscal> builder)
     {
         builder.ToTable("documento_fiscal");
 
@@ -23,15 +23,11 @@ public sealed class FiscalDocumentConfiguration : IEntityTypeConfiguration<Fisca
         builder.Property(d => d.ValorTotal).HasPrecision(18, 2);
         builder.Property(d => d.HashConteudo).HasMaxLength(64).IsRequired();
         builder.Property(d => d.Observacao).HasMaxLength(1000);
-        builder.Property(d => d.MotivoExclusao).HasMaxLength(500);
 
         // bytea. Fica na mesma tabela por simplicidade, mas nunca é projetado na
         // listagem — é o campo pesado e arrastá-lo por página domina o tempo de
         // resposta muito antes de qualquer cache fazer diferença.
         builder.Property(d => d.XmlBruto).HasColumnType("bytea").IsRequired();
-
-        // text[] nativo do Postgres, sem tabela de junção para um metadado de gestão.
-        builder.Property(d => d.Tags).HasColumnType("text[]").IsRequired();
 
         // A âncora da idempotência. O índice é único e SEM filtro de exclusão
         // lógica de propósito: um documento excluído logicamente continua ocupando

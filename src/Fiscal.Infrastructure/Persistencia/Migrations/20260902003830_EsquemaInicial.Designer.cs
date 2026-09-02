@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Fiscal.Infrastructure.Persistencia.Migrations
 {
     [DbContext(typeof(FiscalDbContext))]
-    [Migration("20260901232621_EsquemaInicial")]
+    [Migration("20260902003830_EsquemaInicial")]
     partial class EsquemaInicial
     {
         /// <inheritdoc />
@@ -25,7 +25,7 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Fiscal.Domain.Documentos.FiscalDocument", b =>
+            modelBuilder.Entity("Fiscal.Domain.Documentos.DocumentoFiscal", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -62,10 +62,6 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<string>("MotivoExclusao")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<string>("NomeDestinatario")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -91,13 +87,6 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                         .IsRequired()
                         .HasMaxLength(5)
                         .HasColumnType("character varying(5)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.PrimitiveCollection<string[]>("Tags")
-                        .IsRequired()
-                        .HasColumnType("text[]");
 
                     b.Property<int>("Tipo")
                         .HasColumnType("integer");
@@ -131,7 +120,7 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                     b.ToTable("documento_fiscal", (string)null);
                 });
 
-            modelBuilder.Entity("Fiscal.Domain.Documentos.FiscalDocumentItem", b =>
+            modelBuilder.Entity("Fiscal.Domain.Documentos.ItemDocumentoFiscal", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -244,16 +233,16 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                     b.ToTable("resumo_emitente", (string)null);
                 });
 
-            modelBuilder.Entity("Fiscal.Domain.Documentos.FiscalDocumentItem", b =>
+            modelBuilder.Entity("Fiscal.Domain.Documentos.ItemDocumentoFiscal", b =>
                 {
-                    b.HasOne("Fiscal.Domain.Documentos.FiscalDocument", null)
+                    b.HasOne("Fiscal.Domain.Documentos.DocumentoFiscal", null)
                         .WithMany("Itens")
                         .HasForeignKey("DocumentoId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Fiscal.Domain.Documentos.FiscalDocument", b =>
+            modelBuilder.Entity("Fiscal.Domain.Documentos.DocumentoFiscal", b =>
                 {
                     b.Navigation("Itens");
                 });

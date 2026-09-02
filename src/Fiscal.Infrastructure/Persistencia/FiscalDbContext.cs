@@ -9,7 +9,7 @@ namespace Fiscal.Infrastructure.Persistencia;
 public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options, IContextoAcesso contexto)
     : DbContext(options)
 {
-    public DbSet<FiscalDocument> Documentos => Set<FiscalDocument>();
+    public DbSet<DocumentoFiscal> Documentos => Set<DocumentoFiscal>();
 
     public DbSet<ResumoEmitente> Resumos => Set<ResumoEmitente>();
 
@@ -22,7 +22,11 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options, I
         // Isolamento e exclusão lógica aplicados no modelo, não nas consultas.
         // Qualquer LINQ escrito daqui pra frente herda os dois filtros; sair deles
         // exige IgnoreQueryFilters() explícito, que é visível em code review.
-        modelBuilder.Entity<FiscalDocument>().HasQueryFilter(documento =>
+        //
+        // CnpjAutorizado só é nulo dentro de um escopo de sistema explicitamente
+        // aberto e logado; fora disso a leitura lança e a consulta falha, em vez de
+        // devolver dados de todos os CNPJs.
+        modelBuilder.Entity<DocumentoFiscal>().HasQueryFilter(documento =>
             !documento.Excluido
             && (contexto.CnpjAutorizado == null || documento.CnpjEmitente == contexto.CnpjAutorizado));
 

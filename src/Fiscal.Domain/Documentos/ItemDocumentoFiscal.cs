@@ -4,9 +4,9 @@ namespace Fiscal.Domain.Documentos;
 /// Item do documento. Imutável pela mesma razão que o cabeçalho: faz parte do
 /// documento autorizado.
 /// </summary>
-public sealed class FiscalDocumentItem
+public sealed class ItemDocumentoFiscal
 {
-    private FiscalDocumentItem()
+    private ItemDocumentoFiscal()
     {
     }
 
@@ -30,7 +30,7 @@ public sealed class FiscalDocumentItem
 
     public decimal ValorTotal { get; private set; }
 
-    public static FiscalDocumentItem Criar(
+    public static ItemDocumentoFiscal Criar(
         int numero,
         string codigo,
         string descricao,
