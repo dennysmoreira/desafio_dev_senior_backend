@@ -25,4 +25,10 @@
     <ProjectReference Include="..\..\src\Fiscal.Api\Fiscal.Api.csproj" />
   </ItemGroup>
 
+  <!-- Gerador de NF-e compartilhado com os testes unitários. Linkado em vez de
+       duplicado; um projeto de suporte só para um arquivo seria cerimônia. -->
+  <ItemGroup>
+    <Compile Include="..\Fiscal.UnitTests\Recursos\NfeDeTeste.cs" Link="Recursos\NfeDeTeste.cs" />
+  </ItemGroup>
+
 </Project>

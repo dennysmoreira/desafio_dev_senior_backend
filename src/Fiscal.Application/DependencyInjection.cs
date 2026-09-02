@@ -13,6 +13,10 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<RegistrarDocumento>();
+        services.AddScoped<ConsultarDocumentos>();
+        services.AddScoped<ObterDocumento>();
+        services.AddScoped<AtualizarObservacaoDocumento>();
+        services.AddScoped<ExcluirDocumento>();
 
         return services;
     }
