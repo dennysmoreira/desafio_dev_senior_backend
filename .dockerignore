@@ -1,0 +1,13 @@
+# Só o necessário para compilar entra no contexto. Sem isto, bin/ e obj/ da máquina
+# do desenvolvedor são copiados para dentro da imagem e podem até sobrescrever o
+# resultado da compilação com binários de outra plataforma.
+**/bin/
+**/obj/
+**/.vs/
+.git/
+.gitignore
+tests/
+carga/
+exemplos/
+README.md
+*.md

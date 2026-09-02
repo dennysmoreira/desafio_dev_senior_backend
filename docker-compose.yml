@@ -32,5 +32,31 @@ services:
       timeout: 5s
       retries: 10
 
+  # Fica atrás de um profile: sem isso a API ocuparia a 5099 e entraria em conflito
+  # com quem roda `dotnet run` local, que é o caminho padrão do README.
+  #
+  #   docker compose up -d                       -> só a infraestrutura
+  #   docker compose --profile completo up -d    -> tudo, sem precisar do SDK
+  api:
+    profiles: ["completo"]
+    build:
+      context: .
+      dockerfile: src/Fiscal.Api/Dockerfile
+    container_name: fiscal-api
+    environment:
+      # Dentro da rede do compose, os serviços se enxergam pelo nome e pela porta
+      # interna — 5432 e 5672, não as portas publicadas no host.
+      ConnectionStrings__Fiscal: "Host=postgres;Port=5432;Database=fiscal;Username=fiscal;Password=fiscal"
+      ConnectionStrings__RabbitMq: "amqp://fiscal:fiscal@rabbitmq:5672/"
+      Autenticacao__ChaveDeApi: "chave-de-desenvolvimento"
+      ASPNETCORE_ENVIRONMENT: "Development"
+    ports:
+      - "5099:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   fiscal-pgdata:
