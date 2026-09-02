@@ -10,19 +10,39 @@ exclusão sobre os documentos recebidos.
 
 ## Rodando
 
-**Pré-requisitos:** SDK do .NET 10 e Docker (só para subir Postgres e RabbitMQ).
+Há dois caminhos. Os dois deixam a API em `http://localhost:5099`.
+
+### Tudo em container — só precisa de Docker
+
+```bash
+docker compose --profile completo up -d
+```
+
+Compila a API, sobe Postgres e RabbitMQ, espera os dois ficarem saudáveis e então
+inicia. **Não exige o SDK do .NET instalado.** É o caminho mais previsível se você
+quer só ver funcionando.
+
+### API local — para depurar
 
 ```bash
 docker compose up -d
 dotnet run --project src/Fiscal.Api
 ```
 
-A API sobe em `http://localhost:5099` e abre a documentação interativa no navegador.
+Sobe só a infraestrutura em container e roda a API na sua máquina, abrindo a
+documentação interativa no navegador. Exige o **SDK do .NET 10**.
+
+Os dois convivem porque a API fica atrás de um profile do compose: sem isso, ela
+ocuparia a 5099 e brigaria com o `dotnet run`.
+
+### Em qualquer um dos dois
 
 As migrations são aplicadas no start — não há passo manual de banco. **Na primeira
 execução o log mostra um `fail` do EF Core** consultando `__EFMigrationsHistory`:
 é esperado, a tabela ainda não existe numa base nova. Logo abaixo aparece
 `Applying migration 'EsquemaInicial'`.
+
+Para derrubar tudo, incluindo os dados: `docker compose --profile completo down -v`.
 
 | Recurso | Onde |
 |---|---|
@@ -427,3 +447,7 @@ CNPJ.
 **Observabilidade.** Logs estruturados existem, mas faltam métricas e tracing
 distribuído — sem eles, diagnosticar uma mensagem presa na fila em produção é
 arqueologia.
+
+**Segredos fora do compose.** A chave de API e as senhas do banco e do broker estão
+em texto no `docker-compose.yml` e no `appsettings.json`, o que serve para um
+ambiente de avaliação e para nada além disso.
