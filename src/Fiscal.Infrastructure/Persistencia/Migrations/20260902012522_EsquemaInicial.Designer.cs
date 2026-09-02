@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Fiscal.Infrastructure.Persistencia.Migrations
 {
     [DbContext(typeof(FiscalDbContext))]
-    [Migration("20260902003830_EsquemaInicial")]
+    [Migration("20260902012522_EsquemaInicial")]
     partial class EsquemaInicial
     {
         /// <inheritdoc />
@@ -100,10 +100,6 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<byte[]>("XmlBruto")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
                     b.HasKey("Id");
 
                     b.HasIndex("UfEmitente")
@@ -112,6 +108,10 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                     b.HasIndex("CnpjEmitente", "DataEmissao")
                         .IsDescending(false, true)
                         .HasDatabaseName("ix_documento_fiscal_cnpj_data");
+
+                    b.HasIndex("DocumentoDestinatario", "DataEmissao")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_documento_fiscal_destinatario_data");
 
                     b.HasIndex("Tipo", "ChaveAcesso")
                         .IsUnique()

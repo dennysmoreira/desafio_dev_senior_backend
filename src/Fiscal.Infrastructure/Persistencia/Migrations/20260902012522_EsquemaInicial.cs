@@ -28,7 +28,6 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                     DataEmissao = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     ValorTotal = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     HashConteudo = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-                    XmlBruto = table.Column<byte[]>(type: "bytea", nullable: false),
                     Observacao = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     RecebidoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     AtualizadoEm = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -100,6 +99,12 @@ namespace Fiscal.Infrastructure.Persistencia.Migrations
                 name: "ix_documento_fiscal_cnpj_data",
                 table: "documento_fiscal",
                 columns: new[] { "CnpjEmitente", "DataEmissao" },
+                descending: new[] { false, true });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_documento_fiscal_destinatario_data",
+                table: "documento_fiscal",
+                columns: new[] { "DocumentoDestinatario", "DataEmissao" },
                 descending: new[] { false, true });
 
             migrationBuilder.CreateIndex(

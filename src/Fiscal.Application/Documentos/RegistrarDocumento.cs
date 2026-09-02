@@ -66,7 +66,6 @@ public sealed class RegistrarDocumento(
             lido.DataEmissao,
             lido.ValorTotal,
             hash,
-            xml.ToArray(),
             lido.Itens.Select(i => ItemDocumentoFiscal.Criar(
                 i.Numero, i.Codigo, i.Descricao, i.Ncm, i.Cfop, i.Quantidade, i.ValorUnitario, i.ValorTotal)),
             agora);
