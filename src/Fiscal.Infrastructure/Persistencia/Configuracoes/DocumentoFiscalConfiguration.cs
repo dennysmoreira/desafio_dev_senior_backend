@@ -24,11 +24,6 @@ public sealed class DocumentoFiscalConfiguration : IEntityTypeConfiguration<Docu
         builder.Property(d => d.HashConteudo).HasMaxLength(64).IsRequired();
         builder.Property(d => d.Observacao).HasMaxLength(1000);
 
-        // bytea. Fica na mesma tabela por simplicidade, mas nunca é projetado na
-        // listagem — é o campo pesado e arrastá-lo por página domina o tempo de
-        // resposta muito antes de qualquer cache fazer diferença.
-        builder.Property(d => d.XmlBruto).HasColumnType("bytea").IsRequired();
-
         // A âncora da idempotência. O índice é único e SEM filtro de exclusão
         // lógica de propósito: um documento excluído logicamente continua ocupando
         // sua chave, senão reenviar o XML criaria uma segunda linha para o mesmo
@@ -44,6 +39,13 @@ public sealed class DocumentoFiscalConfiguration : IEntityTypeConfiguration<Docu
             .HasDatabaseName("ix_documento_fiscal_cnpj_data");
 
         builder.HasIndex(d => d.UfEmitente).HasDatabaseName("ix_documento_fiscal_uf");
+
+        // Filtrar por CNPJ do emitente seria inócuo — o filtro global já prende a
+        // consulta ao CNPJ autenticado. O filtro por CNPJ que produz resultado útil
+        // é o do destinatário: "quais notas emiti para o cliente X".
+        builder.HasIndex(d => new { d.DocumentoDestinatario, d.DataEmissao })
+            .IsDescending(false, true)
+            .HasDatabaseName("ix_documento_fiscal_destinatario_data");
 
         builder.HasMany(d => d.Itens)
             .WithOne()

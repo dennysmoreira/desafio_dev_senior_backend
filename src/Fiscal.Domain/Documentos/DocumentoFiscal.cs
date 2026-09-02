@@ -5,8 +5,8 @@ namespace Fiscal.Domain.Documentos;
 /// <summary>
 /// Documento fiscal recebido. A modelagem separa duas naturezas:
 ///
-///   1. O documento fiscal em si (chave, emitente, destinatário, valores, itens,
-///      XML original) é IMUTÁVEL. Documento autorizado não se altera — corrige-se
+///   1. O documento fiscal em si (chave, emitente, destinatário, valores, itens)
+///      é IMUTÁVEL. Documento autorizado não se altera — corrige-se
 ///      por carta de correção ou cancela-se, ambos eventos que geram outro XML.
 ///      Não existe setter público nem método que altere esses campos.
 ///
@@ -52,17 +52,16 @@ public sealed class DocumentoFiscal
     public decimal ValorTotal { get; private set; }
 
     /// <summary>
-    /// SHA-256 do XML exatamente como recebido. Serve a dois propósitos: distinguir
-    /// reenvio idêntico de reenvio divergente na ingestão, e servir de ETag no GET.
+    /// SHA-256 do XML exatamente como recebido, calculado antes de qualquer
+    /// normalização. Serve a dois propósitos: distinguir reenvio idêntico de reenvio
+    /// divergente na ingestão, e servir de ETag no GET.
+    /// <para>
+    /// O arquivo em si NÃO é armazenado — decisão consciente, registrada no README.
+    /// A consequência aceita é não poder verificar a assinatura digital nem
+    /// reprocessar os campos do layout que este parser não extrai.
+    /// </para>
     /// </summary>
     public string HashConteudo { get; private set; } = string.Empty;
-
-    /// <summary>
-    /// XML original em bytes, não em string: o documento é prova legal e precisa
-    /// sobreviver byte a byte, sem passar por normalização de encoding. Nunca é
-    /// carregado na listagem — só no detalhe.
-    /// </summary>
-    public byte[] XmlBruto { get; private set; } = [];
 
     public IReadOnlyCollection<ItemDocumentoFiscal> Itens => _itens.AsReadOnly();
 
@@ -98,7 +97,6 @@ public sealed class DocumentoFiscal
         DateTimeOffset dataEmissao,
         decimal valorTotal,
         string hashConteudo,
-        byte[] xmlBruto,
         IEnumerable<ItemDocumentoFiscal> itens,
         DateTimeOffset agora)
     {
@@ -112,9 +110,9 @@ public sealed class DocumentoFiscal
             throw new DomainException("Documento sem CNPJ do emitente.");
         }
 
-        if (xmlBruto.Length == 0)
+        if (string.IsNullOrWhiteSpace(hashConteudo))
         {
-            throw new DomainException("Documento sem conteúdo XML.");
+            throw new DomainException("Documento sem hash de conteúdo.");
         }
 
         var documento = new DocumentoFiscal
@@ -132,7 +130,6 @@ public sealed class DocumentoFiscal
             DataEmissao = dataEmissao,
             ValorTotal = valorTotal,
             HashConteudo = hashConteudo,
-            XmlBruto = xmlBruto,
             RecebidoEm = agora,
             AtualizadoEm = agora,
         };
