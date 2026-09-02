@@ -66,9 +66,21 @@ Com a API de pé e a base povoada:
 
 ```bash
 docker exec -i fiscal-postgres psql -U fiscal -d fiscal < carga/povoar.sql
+
 docker run --rm -i --add-host=host.docker.internal:host-gateway \
   -v "$PWD/carga:/carga" grafana/k6 run /carga/ingestao-e-consulta.js
 ```
+
+**No Git Bash do Windows**, prefixe com `MSYS_NO_PATHCONV=1`. Sem isso o MSYS
+converte também o caminho de dentro do container, e o k6 acaba procurando o script
+em `C:/Program Files/Git/carga`:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -i --add-host=host.docker.internal:host-gateway \
+  -v "$PWD/carga:/carga" grafana/k6 run /carga/ingestao-e-consulta.js
+```
+
+**No PowerShell**, troque o volume por `-v "${PWD}\carga:/carga"`.
 
 Cenários isolados: `-e CENARIO=ingestao` ou `-e CENARIO=consulta`.
 Ao repetir a ingestão, incremente `-e EXECUCAO=N` — sem isso a segunda rodada
