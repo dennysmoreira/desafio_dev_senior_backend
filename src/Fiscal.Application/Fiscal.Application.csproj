@@ -4,4 +4,9 @@
     <ProjectReference Include="..\Fiscal.Domain\Fiscal.Domain.csproj" />
   </ItemGroup>
 
+  <!-- Abstração de log apenas. Nenhum provider, nenhum framework de infraestrutura. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
 </Project>

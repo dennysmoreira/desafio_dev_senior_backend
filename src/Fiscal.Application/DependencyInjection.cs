@@ -1,0 +1,19 @@
+using Fiscal.Application.Documentos;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+namespace Fiscal.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddFiscalApplication(this IServiceCollection services)
+    {
+        // TimeProvider do próprio BCL em vez de uma IClock caseira: os testes trocam
+        // por FakeTimeProvider sem que o domínio precise conhecer abstração nossa.
+        services.TryAddSingleton(TimeProvider.System);
+
+        services.AddScoped<RegistrarDocumento>();
+
+        return services;
+    }
+}
