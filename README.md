@@ -17,8 +17,12 @@ docker compose up -d
 dotnet run --project src/Fiscal.Api
 ```
 
-As migrations são aplicadas no start — não há passo manual de banco. A API sobe em
-`http://localhost:5099` (ou na porta do `launchSettings.json`, se você usar o perfil).
+A API sobe em `http://localhost:5099` e abre a documentação interativa no navegador.
+
+As migrations são aplicadas no start — não há passo manual de banco. **Na primeira
+execução o log mostra um `fail` do EF Core** consultando `__EFMigrationsHistory`:
+é esperado, a tabela ainda não existe numa base nova. Logo abaixo aparece
+`Applying migration 'EsquemaInicial'`.
 
 | Recurso | Onde |
 |---|---|
