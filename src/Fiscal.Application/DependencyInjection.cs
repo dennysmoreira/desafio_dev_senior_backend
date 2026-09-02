@@ -1,4 +1,5 @@
 using Fiscal.Application.Documentos;
+using Fiscal.Application.Resumos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -17,6 +18,8 @@ public static class DependencyInjection
         services.AddScoped<ObterDocumento>();
         services.AddScoped<AtualizarObservacaoDocumento>();
         services.AddScoped<ExcluirDocumento>();
+        services.AddScoped<AtualizarResumoDoEmitente>();
+        services.AddScoped<ConsultarResumos>();
 
         return services;
     }
