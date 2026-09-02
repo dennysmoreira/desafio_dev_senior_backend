@@ -43,6 +43,16 @@ public sealed class ConsumidorResumo(
     ILogger<ConsumidorResumo> logger) : BackgroundService
 {
     private readonly ResiliencePipeline _politica = new ResiliencePipelineBuilder()
+        // Teto para o conjunto das tentativas, e ele é a parte mais importante desta
+        // política. Sem o teto, uma falha de conexão do Npgsql espera 15s por
+        // tentativa: três tentativas seguram o consumidor por quase um minuto numa
+        // mensagem só, e com prefetch 10 as outras nove ficam presas atrás dela.
+        // Medido: banco parado bloqueava o consumidor por ~60s antes deste timeout.
+        //
+        // A divisão de trabalho fica clara: o retry in-process cobre soluços de
+        // menos de um segundo; qualquer coisa maior é problema do broker, que espera
+        // sem ocupar ninguém.
+        .AddTimeout(TimeSpan.FromSeconds(10))
         .AddRetry(new RetryStrategyOptions
         {
             MaxRetryAttempts = 3,
