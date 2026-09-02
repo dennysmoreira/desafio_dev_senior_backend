@@ -7,7 +7,7 @@ using NetArchTest.Rules;
 namespace Fiscal.ArchitectureTests;
 
 /// <summary>
-/// Quatro regras, não quatorze.
+/// Cinco regras, não quinze.
 /// <para>
 /// Asserção de convenção de nome não prova arquitetura nenhuma — prova que alguém
 /// digitou um sufixo. As regras aqui verificam a única coisa que um teste de
@@ -31,7 +31,6 @@ public sealed class RegrasDeArquiteturaTests
 {
     private static readonly Assembly Dominio = typeof(DocumentoFiscal).Assembly;
     private static readonly Assembly Aplicacao = typeof(RegistrarDocumento).Assembly;
-    private static readonly Assembly Infraestrutura = typeof(FiscalDbContext).Assembly;
     private static readonly Assembly Api = typeof(Program).Assembly;
 
     /// <summary>
