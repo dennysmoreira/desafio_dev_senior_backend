@@ -1,6 +1,7 @@
 using Fiscal.Application;
 using Fiscal.Application.Documentos;
 using Fiscal.Application.Mensageria;
+using Fiscal.Application.Resumos;
 using Fiscal.Application.Seguranca;
 using Fiscal.Infrastructure.Mensageria;
 using Fiscal.Infrastructure.Persistencia;
@@ -41,10 +42,33 @@ public static class DependencyInjection
         services.AddScoped<IParserDocumentoFiscal, ParserNfe>();
         services.AddScoped<ISeletorDeParser, SeletorDeParser>();
 
-        // Substituído pela implementação com RabbitMQ no bloco de mensageria.
-        services.AddScoped<IPublicadorEventos, PublicadorEmLog>();
+        services.AddScoped<IRepositorioResumos, RepositorioResumos>();
 
         services.AddFiscalApplication();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Mensageria. Separada do resto porque os testes de ingestão não precisam de
+    /// broker: eles registram um publicador em log e continuam válidos.
+    /// </summary>
+    public static IServiceCollection AddFiscalMensageria(
+        this IServiceCollection services,
+        OpcoesRabbitMq opcoes)
+    {
+        services.AddSingleton(opcoes);
+        services.AddSingleton<ConexaoRabbitMq>();
+        services.AddScoped<IPublicadorEventos, PublicadorRabbitMq>();
+        services.AddHostedService<ConsumidorResumo>();
+
+        return services;
+    }
+
+    /// <summary>Publicador que só registra em log, para rodar sem broker.</summary>
+    public static IServiceCollection AddFiscalMensageriaEmLog(this IServiceCollection services)
+    {
+        services.AddScoped<IPublicadorEventos, PublicadorEmLog>();
 
         return services;
     }

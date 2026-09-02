@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
 namespace Fiscal.IntegrationTests;
@@ -34,6 +35,12 @@ public sealed class AmbienteDeTeste
         {
             construtor.UseSetting("ConnectionStrings:Fiscal", _postgres.GetConnectionString());
             construtor.UseSetting("Autenticacao:ChaveDeApi", ChaveDeApi);
+
+            // Sem broker nesta suíte: a entrega em si é responsabilidade do RabbitMQ,
+            // e o que precisa ser provado aqui é o efeito colateral do consumo, que os
+            // testes exercitam chamando o caso de uso direto. Deixar a string
+            // configurada faria o consumidor tentar conectar e travar a suíte inteira.
+            construtor.UseSetting("ConnectionStrings:RabbitMq", string.Empty);
         });
 
         // Força a construção do host, que aplica as migrations no start.
@@ -57,6 +64,9 @@ public sealed class AmbienteDeTeste
 
         return cliente;
     }
+
+    /// <summary>Escopo de serviços da aplicação, para exercitar casos de uso direto.</summary>
+    public static IServiceScope CriarEscopo() => _fabrica.Services.CreateScope();
 
     public static StringContent CorpoXml(byte[] xml) =>
         new(Encoding.UTF8.GetString(xml), Encoding.UTF8, MediaTypeHeaderValue.Parse("application/xml"));

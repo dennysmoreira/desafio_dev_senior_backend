@@ -1,6 +1,7 @@
 using Fiscal.Api.Endpoints;
 using Fiscal.Api.Seguranca;
 using Fiscal.Infrastructure;
+using Fiscal.Infrastructure.Mensageria;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,6 +14,20 @@ builder.WebHost.ConfigureKestrel(kestrel =>
 builder.Services.AddFiscalInfrastructure(
     builder.Configuration.GetConnectionString("Fiscal")
     ?? throw new InvalidOperationException("ConnectionStrings:Fiscal não configurada."));
+
+// Sem string de conexão do broker a API sobe com um publicador que só registra em
+// log. É o modo usado pelos testes de integração de ingestão, que não precisam de
+// fila — mas o aviso no start impede que isso passe despercebido em produção.
+var brokerUri = builder.Configuration.GetConnectionString("RabbitMq");
+
+if (string.IsNullOrWhiteSpace(brokerUri))
+{
+    builder.Services.AddFiscalMensageriaEmLog();
+}
+else
+{
+    builder.Services.AddFiscalMensageria(new OpcoesRabbitMq { Uri = brokerUri });
+}
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
@@ -30,6 +45,13 @@ app.UseMiddleware<AutenticacaoPorCnpj>(
     app.Configuration["Autenticacao:ChaveDeApi"]
     ?? throw new InvalidOperationException("Autenticacao:ChaveDeApi não configurada."));
 
+if (string.IsNullOrWhiteSpace(brokerUri))
+{
+    app.Logger.LogWarning(
+        "ConnectionStrings:RabbitMq não configurada. Eventos serão apenas registrados em log e "
+        + "o consumidor de resumo NÃO está ativo.");
+}
+
 app.MapOpenApi();
 app.MapScalarApiReference();
 
@@ -37,6 +59,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).ExcludeFromDescri
 
 app.MapDocumentos();
 app.MapConsultas();
+app.MapResumos();
 
 await app.RunAsync();
 
