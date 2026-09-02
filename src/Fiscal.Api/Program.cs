@@ -36,6 +36,7 @@ app.MapScalarApiReference();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).ExcludeFromDescription();
 
 app.MapDocumentos();
+app.MapConsultas();
 
 await app.RunAsync();
 
