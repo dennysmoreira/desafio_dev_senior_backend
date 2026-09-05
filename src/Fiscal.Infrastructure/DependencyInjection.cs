@@ -15,6 +15,7 @@ using Fiscal.Infrastructure.Seguranca;
 using Fiscal.Infrastructure.Xml;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Fiscal.Infrastructure;
 
@@ -154,13 +155,14 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Aplica migrations pendentes. Chamado no start dos dois deployáveis para que o
-    /// avaliador suba tudo com um comando. Nada de EnsureCreated: o schema versionado
-    /// é o mesmo em qualquer ambiente.
+    /// Aplica migrations pendentes. Chamado APENAS pela API. Nada de EnsureCreated:
+    /// o schema versionado é o mesmo em qualquer ambiente.
     /// <para>
-    /// API e worker sobem em paralelo e os dois chamam este método. Não há corrida: o
-    /// EF Core adquire lock exclusivo antes de migrar, então o segundo espera o
-    /// primeiro terminar e encontra o schema em dia.
+    /// Só um processo migra, e isso foi aprendido na prática: com API e worker
+    /// subindo juntos contra um banco vazio, os dois entraram em MigrateAsync ao
+    /// mesmo tempo e um morreu com <c>relation "evento_pendente" already exists</c>.
+    /// O lock de migração do EF não cobre a corrida quando nem a tabela de histórico
+    /// existe ainda. O worker espera — ver <see cref="AguardarSchemaAsync"/>.
     /// </para>
     /// </summary>
     public static async Task MigrarBancoAsync(this IServiceProvider provedor, CancellationToken cancellationToken)
@@ -172,5 +174,55 @@ public static class DependencyInjection
 
         var db = escopo.ServiceProvider.GetRequiredService<FiscalDbContext>();
         await db.Database.MigrateAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Espera o schema existir, em vez de migrar. É o que o worker faz: ele não é
+    /// dono do schema, é consumidor dele.
+    /// <para>
+    /// A alternativa seria um container de migração dedicado, com os dois serviços
+    /// dependendo da conclusão dele. É o desenho correto em produção e está anotado
+    /// como melhoria; para uma stack de avaliação, esperar custa vinte linhas em vez
+    /// de um deployável a mais.
+    /// </para>
+    /// </summary>
+    public static async Task AguardarSchemaAsync(
+        this IServiceProvider provedor,
+        TimeSpan limite,
+        CancellationToken cancellationToken)
+    {
+        using var escopo = provedor.CreateScope();
+
+        var definidor = escopo.ServiceProvider.GetRequiredService<IDefinidorContextoAcesso>();
+        using var _ = definidor.AbrirEscopoDeSistema("espera pelo schema no start");
+
+        var db = escopo.ServiceProvider.GetRequiredService<FiscalDbContext>();
+        var registro = escopo.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Schema");
+
+        var prazo = DateTimeOffset.UtcNow + limite;
+
+        while (true)
+        {
+            try
+            {
+                if (!(await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
+                {
+                    return;
+                }
+            }
+            catch (Exception excecao) when (DateTimeOffset.UtcNow < prazo)
+            {
+                registro.LogInformation("Banco ainda não pronto ({Motivo}); aguardando.", excecao.GetType().Name);
+            }
+
+            if (DateTimeOffset.UtcNow >= prazo)
+            {
+                throw new InvalidOperationException(
+                    $"Schema não ficou pronto em {limite.TotalSeconds:N0}s. A API aplica as migrations; "
+                    + "verifique se ela subiu.");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        }
     }
 }

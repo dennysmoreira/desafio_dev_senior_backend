@@ -55,6 +55,14 @@ builder.Services.AddArmazenamentoDeXml(new OpcoesDeArmazenamento
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
+// Mesma razão do worker: erro de registro tem de matar o start, não virar 500 na
+// primeira requisição.
+builder.Host.UseDefaultServiceProvider(opcoes =>
+{
+    opcoes.ValidateOnBuild = true;
+    opcoes.ValidateScopes = true;
+});
+
 var app = builder.Build();
 
 await app.Services.MigrarBancoAsync(CancellationToken.None);
