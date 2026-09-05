@@ -1,0 +1,698 @@
+{
+  "info": {
+    "name": "API de documentos fiscais",
+    "description": "Fluxo completo da API, na ordem. Rode de cima para baixo — ou use o Collection Runner — e as variaveis loteId, documentoId e etag se preenchem sozinhas.\n\nAntes de comecar, suba a stack:\n\n    docker compose --profile completo up -d\n\nNao e preciso selecionar arquivo nenhum: a requisicao 'Enviar lote' monta o XML sozinha, com uma chave de acesso nova a cada execucao. Por isso a colecao pode ser rodada quantas vezes quiser sem cair em duplicata.\n\nO lote enviado tem dois arquivos de proposito, um valido e um invalido, para voce ver que um arquivo ruim nao contamina o outro.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5099",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "chave-de-desenvolvimento",
+      "type": "string"
+    },
+    {
+      "key": "cnpj",
+      "value": "12345678000199",
+      "type": "string"
+    },
+    {
+      "key": "loteId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "documentoId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "etag",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tentativas",
+      "value": "0",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Saude",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Nao exige autenticacao. Use para conferir que a stack subiu."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Enviar lote",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "multipart/form-data; boundary=----FiscalPostman"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/lotes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "lotes"
+          ]
+        },
+        "description": "Envia dois XMLs — um valido e um invalido — em multipart. Responde 202: os arquivos foram gravados e enfileirados, e nada foi processado ainda.\n\nO corpo e montado pelo script de pre-requisicao, com uma chave de acesso nova a cada execucao. Olhe o Console do Postman para ver a chave gerada.",
+        "body": {
+          "mode": "raw",
+          "raw": "{{corpoMultipart}}"
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Monta o multipart a mao, com um XML novo a cada execucao.",
+              "//",
+              "// Por que nao um arquivo do disco: o Postman nao consegue embutir arquivo numa",
+              "// colecao, entao quem importasse teria de selecionar um. E, pior, o mesmo arquivo",
+              "// tem sempre a mesma chave de acesso — da segunda execucao em diante todo item",
+              "// viraria 'Duplicado' e o resto da colecao operaria sobre um documento antigo.",
+              "//",
+              "// Gerando a chave a partir do relogio, cada execucao ingere de verdade.",
+              "",
+              "const agora = String(Date.now());",
+              "const cnpj = pm.collectionVariables.get('cnpj');",
+              "const seq = agora.slice(-9);",
+              "const cnf = agora.slice(-8);",
+              "",
+              "// cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nNF(9) tpEmis(1) cNF(8) DV(1) = 44",
+              "const chave = '35' + '2601' + cnpj + '55' + '001' + seq + '1' + cnf + '0';",
+              "",
+              "const xml = [",
+              "  '<?xml version=\"1.0\" encoding=\"UTF-8\"?>',",
+              "  '<nfeProc xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\"><NFe>',",
+              "  '<infNFe Id=\"NFe' + chave + '\" versao=\"4.00\">',",
+              "  '<ide><cUF>35</cUF><mod>55</mod><serie>1</serie><nNF>' + Number(seq) + '</nNF>',",
+              "  '<dhEmi>2026-01-15T10:30:00-03:00</dhEmi><tpNF>1</tpNF></ide>',",
+              "  '<emit><CNPJ>' + cnpj + '</CNPJ><xNome>Comercio Exemplo Ltda</xNome>',",
+              "  '<enderEmit><UF>SP</UF></enderEmit></emit>',",
+              "  '<dest><CPF>52998224725</CPF><xNome>Maria Aparecida de Souza</xNome></dest>',",
+              "  '<det nItem=\"1\"><prod><cProd>SKU-001</cProd><xProd>Caderno universitario</xProd>',",
+              "  '<NCM>48201000</NCM><CFOP>5102</CFOP>',",
+              "  '<qCom>10.0000</qCom><vUnCom>15.5000</vUnCom><vProd>155.00</vProd></prod></det>',",
+              "  '<det nItem=\"2\"><prod><cProd>SKU-002</cProd><xProd>Caneta esferografica</xProd>',",
+              "  '<NCM>96081000</NCM><CFOP>5102</CFOP>',",
+              "  '<qCom>50.0000</qCom><vUnCom>2.9000</vUnCom><vProd>145.00</vProd></prod></det>',",
+              "  '<total><ICMSTot><vNF>300.00</vNF></ICMSTot></total>',",
+              "  '</infNFe></NFe></nfeProc>',",
+              "].join('');",
+              "",
+              "// CRLF e obrigatorio no multipart. Com LF sozinho o servidor recusa.",
+              "const FIM = String.fromCharCode(13) + String.fromCharCode(10);",
+              "const B = '------FiscalPostman';",
+              "",
+              "function parte(nomeArquivo, conteudo) {",
+              "  return B + FIM +",
+              "    'Content-Disposition: form-data; name=\"arquivos\"; filename=\"' + nomeArquivo + '\"' + FIM +",
+              "    'Content-Type: application/xml' + FIM + FIM +",
+              "    conteudo + FIM;",
+              "}",
+              "",
+              "// Dois arquivos de proposito: um valido e um invalido. O lote termina como",
+              "// ConcluidoComErros, mostrando que um arquivo ruim nao contamina o outro.",
+              "const corpo = parte('nfe-' + seq + '.xml', xml) +",
+              "              parte('invalido.xml', 'isto nao e um xml valido') +",
+              "              B + '--' + FIM;",
+              "",
+              "pm.variables.set('corpoMultipart', corpo);",
+              "console.log('chave gerada: ' + chave + ' (' + chave.length + ' digitos)');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+              "const corpo = pm.response.json();",
+              "pm.test('dois arquivos aceitos', () =>",
+              "    pm.expect(corpo.quantidadeDeArquivos).to.eql(2));",
+              "pm.collectionVariables.set('loteId', corpo.loteId);",
+              "pm.collectionVariables.set('tentativas', 0);",
+              "console.log('loteId salvo: ' + corpo.loteId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Acompanhar o lote",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/lotes/{{loteId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "lotes",
+            "{{loteId}}"
+          ]
+        },
+        "description": "Situacao do lote e de cada arquivo. A ingestao e assincrona, entao esta requisicao se repete sozinha ate o worker terminar (no Collection Runner e no newman; rodando sozinha, e so clicar em Send de novo).\n\nO esperado e ConcluidoComErros: um arquivo ingerido e um rejeitado, com o motivo visivel."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "",
+              "const lote = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativas') || 0);",
+              "console.log('situacao: ' + lote.situacao + ' | pendentes: ' + lote.pendentes);",
+              "",
+              "if (lote.pendentes === 0) {",
+              "    const ingerido = lote.itens.find(i => i.situacao === 'Ingerido');",
+              "    const rejeitado = lote.itens.find(i => i.situacao === 'Rejeitado');",
+              "",
+              "    pm.test('um arquivo ingerido', () => pm.expect(ingerido).to.not.be.undefined);",
+              "    pm.test('o invalido foi rejeitado com motivo', () =>",
+              "        pm.expect(rejeitado.motivo).to.be.a('string').and.not.empty);",
+              "",
+              "    if (ingerido) {",
+              "        pm.collectionVariables.set('documentoId', ingerido.documentoId);",
+              "        console.log('documentoId salvo: ' + ingerido.documentoId);",
+              "    }",
+              "    console.log('motivo da rejeicao: ' + (rejeitado ? rejeitado.motivo : '-'));",
+              "} else if (tentativa < 20) {",
+              "    pm.collectionVariables.set('tentativas', tentativa + 1);",
+              "    postman.setNextRequest('3. Acompanhar o lote');",
+              "} else {",
+              "    pm.test('lote terminou', () =>",
+              "        pm.expect.fail('worker nao processou em 20 tentativas'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Listar lotes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/lotes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "lotes"
+          ]
+        },
+        "description": "Lotes recentes do contribuinte autenticado."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Listar documentos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos?tamanho=20&pagina=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos"
+          ],
+          "query": [
+            {
+              "key": "tamanho",
+              "value": "20"
+            },
+            {
+              "key": "pagina",
+              "value": "1"
+            },
+            {
+              "key": "dataInicio",
+              "value": "2026-01-01T00:00:00Z",
+              "disabled": true
+            },
+            {
+              "key": "dataFim",
+              "value": "2026-12-31T23:59:59Z",
+              "disabled": true
+            },
+            {
+              "key": "documentoDestinatario",
+              "value": "52998224725",
+              "disabled": true
+            },
+            {
+              "key": "uf",
+              "value": "SP",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Listagem paginada. Os filtros extras estao desativados: ative os que quiser.\n\nRepare que o CPF do destinatario vem MASCARADO aqui — o valor integro so aparece no detalhe."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const p = pm.response.json();",
+              "console.log('total: ' + p.total);",
+              "if (p.itens.length) {",
+              "    pm.test('CPF vem mascarado na listagem', () =>",
+              "        pm.expect(p.itens[0].documentoDestinatario || '*').to.include('*'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Detalhe do documento",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "Traz os itens e o CPF/CNPJ do destinatario INTEGRO. Devolve ETag, que fica salvo para a proxima requisicao."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const d = pm.response.json();",
+              "pm.test('CPF integro no detalhe', () =>",
+              "    pm.expect(d.documentoDestinatario).to.eql('52998224725'));",
+              "pm.test('dois itens', () => pm.expect(d.itens).to.have.lengthOf(2));",
+              "const etag = pm.response.headers.get('ETag');",
+              "if (etag) { pm.collectionVariables.set('etag', etag); }",
+              "console.log('ETag salvo: ' + etag);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Detalhe com If-None-Match",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          },
+          {
+            "key": "If-None-Match",
+            "value": "{{etag}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "Reenvia o ETag da requisicao anterior. Como nada mudou, a resposta e 304 sem corpo — o documento nao trafega de novo."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('304 Not Modified', () => pm.response.to.have.status(304));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Atualizar a observacao",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "Unico campo alteravel. Chave de acesso, emitente, valores e itens sao imutaveis por construcao — nao existe caminho no codigo para sobrescreve-los.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"observacao\": \"conferido com o pedido 4471\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const d = pm.response.json();",
+              "pm.test('observacao gravada', () =>",
+              "    pm.expect(d.observacao).to.eql('conferido com o pedido 4471'));",
+              "pm.test('o documento fiscal nao se moveu', () => {",
+              "    pm.expect(d.valorTotal).to.eql(300.00);",
+              "    pm.expect(d.itens).to.have.lengthOf(2);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Resumos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/resumos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "resumos"
+          ]
+        },
+        "description": "Agregado por emitente e competencia, alimentado pela ingestao."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Sem autenticacao",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/documentos",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos"
+          ]
+        },
+        "description": "Sem os cabecalhos, 401. A chave de API e conferida em tempo constante."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Documento de outro contribuinte",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "99999999000199"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "Autenticado como outro CNPJ. Responde 404, e nao 403, de proposito: um 403 confirmaria que o documento existe, o que ja e vazamento entre contribuintes."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('404, nao 403', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Excluir (logico)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "Exclusao logica: a linha permanece, porque o Fisco exige guarda de cinco anos. Repetir a chamada continua devolvendo 204."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('204', () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Detalhe do excluido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Api-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "X-Cnpj",
+            "value": "{{cnpj}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documentos/{{documentoId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documentos",
+            "{{documentoId}}"
+          ]
+        },
+        "description": "410 Gone, nao 404: o documento existiu e foi removido, e as duas situacoes dizem coisas diferentes ao cliente."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('410 Gone', () => pm.response.to.have.status(410));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

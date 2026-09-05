@@ -71,6 +71,34 @@ X-Api-Key: chave-de-desenvolvimento
 X-Cnpj: 12345678000199
 ```
 
+### Testando no Postman
+
+Importe [`postman/documentos-fiscais.postman_collection.json`](postman/documentos-fiscais.postman_collection.json)
+— *Import* → arraste o arquivo. Treze requisições na ordem do fluxo; rode de cima
+para baixo, ou use o **Collection Runner** para executar tudo de uma vez.
+
+Não é preciso selecionar arquivo nenhum. A requisição *Enviar lote* monta o multipart
+num script de pré-requisição, com uma **chave de acesso nova a cada execução** — o
+Postman não consegue embutir arquivo numa coleção, e um arquivo fixo faria toda
+execução a partir da segunda cair em `Duplicado`.
+
+O lote leva dois XMLs de propósito, um válido e um inválido, para o resultado mostrar
+que um arquivo ruim não contamina o outro. As variáveis `loteId`, `documentoId` e
+`etag` se preenchem sozinhas, e a requisição de acompanhamento **repete a si mesma até
+o worker terminar** — a ingestão é assíncrona.
+
+A coleção também tem asserções: `202` no envio, `304` no `If-None-Match`, `401` sem
+autenticação, `404` (e não `403`) para documento de outro contribuinte, `410` para
+excluído. Rodando pelo Runner, ela é um teste de fumaça da API inteira.
+
+Para rodar sem abrir o Postman, com o runner oficial:
+
+```bash
+docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD:/etc/newman"   postman/newman run /etc/newman/postman/documentos-fiscais.postman_collection.json   --env-var "baseUrl=http://host.docker.internal:5099"
+```
+
+Alternativa sem coleção: o Postman importa OpenAPI direto de `/openapi/v1.json`.
+
 ---
 
 ## Endpoints
