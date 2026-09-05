@@ -124,7 +124,7 @@ public static class DependencyInjection
         OpcoesRabbitMq opcoes)
     {
         services.AddConexaoRabbitMq(opcoes);
-        services.AddScoped<IPublicadorEventos, PublicadorRabbitMq>();
+        services.AddSingleton<IPublicadorEventos, PublicadorRabbitMq>();
 
         // O relay acompanha o publicador: o outbox pertence a quem escreve.
         services.AddHostedService<RelayDoOutbox>();

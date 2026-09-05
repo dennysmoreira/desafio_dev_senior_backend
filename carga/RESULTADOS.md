@@ -1,68 +1,80 @@
 # Teste de carga — resultados
 
-Medido em 2026-09-02, k6 em container contra a API rodando local (`dotnet run`,
-Debug), PostgreSQL 17 em container, base com **50 mil documentos**. 10 VUs por
-cenário, 20 segundos cada.
+Medido em 2026-09-05, k6 em container contra a stack completa em containers na mesma
+máquina (build Release para as imagens, PostgreSQL 17, RabbitMQ 4, MinIO), base com
+**50 mil documentos** pré-existentes. 10 VUs por cenário, 20 segundos cada.
 
-> Máquina de desenvolvimento, build Debug, tudo no mesmo host. Os números servem
-> para **comparar decisões entre si**, não como capacidade de produção.
+> Máquina de desenvolvimento, tudo no mesmo host. Os números servem para **comparar
+> decisões entre si**, não como capacidade de produção.
 
-## Ingestão — `POST /documentos`
+## Ingestão — `POST /lotes`
+
+Cada requisição envia um lote de **3 arquivos**.
 
 | Métrica | Valor |
 |---|---|
-| Vazão | 174 req/s |
-| Latência média | 57 ms |
-| p95 | 82 ms |
+| Lotes aceitos | 142 lotes/s |
+| Arquivos aceitos | ~427 arquivos/s |
+| Latência média | 70 ms |
+| p95 | 80 ms |
 | Erros | 0% |
-| Documentos criados | 100% dos envios (3.488 de 3.488) |
+| Lotes com `202` | 100% |
 
-Cada iteração envia uma chave de acesso inédita, então o número mede inserção real:
-leitura blindada do XML, parse, SHA-256, `INSERT` e publicação do evento.
+O caminho síncrono faz hash, gravação no MinIO e uma transação com o lote, os itens e
+os eventos de outbox. **Não faz parse** — é isso que mantém a resposta curta mesmo
+com três arquivos por requisição.
 
-## Consulta — `GET /documentos` com filtros + `GET /documentos/{id}`
+## Consulta — `GET /documentos` + `GET /documentos/{id}`
 
 Mesma consulta, mesma base, com e sem o índice composto
 `ix_documento_fiscal_cnpj_data (CnpjEmitente, DataEmissao DESC)`:
 
 | | Com índice | Sem índice |
 |---|---|---|
-| Latência média | 20,7 ms | 55,6 ms |
-| **p95** | **41,2 ms** | **122,0 ms** |
-| Vazão | 469 req/s | — |
+| Latência média | 20,2 ms | 61,5 ms |
+| **p95** | **40,6 ms** | **136,0 ms** |
+| Vazão | 482 req/s | 161 req/s |
 
-**p95 quase 3× pior sem o índice**, na mesma consulta e no mesmo volume.
+**p95 mais de 3× pior sem o índice**, e um terço da vazão, na mesma consulta e no
+mesmo volume. O plano confirma: com o índice, a consulta filtra e ordena percorrendo-o,
+lendo 22 páginas para devolver 20 registros de uma base de 50 mil.
 
-O plano confirma o motivo — com o índice, a consulta filtra e ordena percorrendo-o,
-sem ordenação em memória:
+## Vazão do worker, e onde estava o gargalo
 
-```
-Limit
-  -> Index Scan using ix_documento_fiscal_cnpj_data on documento_fiscal
-       Index Cond: (CnpjEmitente = ... AND DataEmissao >= ... AND DataEmissao <= ...)
-       Filter: (NOT Excluido)
-       Buffers: shared hit=22
-```
+Aqui a medição pagou por si. Com uma réplica de worker e milhares de itens pendentes,
+a fila do RabbitMQ estava **praticamente vazia** — o que só faz sentido se o problema
+for publicar, não consumir.
 
-Vinte e duas páginas lidas para devolver vinte registros de uma base de cinquenta mil.
+Era: o publicador abria um canal AMQP **por mensagem**. Canal é caro de criar e feito
+para ser reaproveitado. Depois de reaproveitá-lo, a fila passou a acumular milhares de
+mensagens, ou seja, o relay deixou de ser o limite.
+
+| Configuração | Itens processados |
+|---|---|
+| 1 worker | 61 arquivos/s |
+| 4 workers | ≥ 100 arquivos/s — a fila de 3.005 pendentes zerou antes da janela de 30s fechar |
+
+O número de 4 workers é **piso**, não teto: o backlog acabou antes da medição
+terminar. O que ele demonstra é o ponto do desenho — a vazão de consumo escala
+acrescentando réplicas de worker, sem tocar na API.
+
+E a assimetria é intencional: a API aceita ~427 arquivos/s e um worker processa ~61.
+Numa rajada, a diferença vira fila em vez de erro — que é exatamente o motivo de a
+ingestão ser assíncrona.
 
 ## Por que não há cache
 
-Nenhum cache de aplicação foi adicionado, e a decisão é deliberada:
-
 - No volume medido, a consulta responde em ~20 ms de média. Não há gargalo para
   cachear — o índice já resolveu.
-- Cache exige invalidação, e invalidação errada devolve dado velho. Trocar 20 ms
-  por essa classe de bug é mau negócio.
-- Um cache externo seria mais um ponto de falha, num desafio cujo item 8 pede
-  justamente resiliência.
+- Cache exige invalidação, e invalidação errada devolve dado velho.
+- Seria mais um ponto de falha num sistema cujo requisito é resiliência.
 
-O que existe no lugar, a custo zero: **ETag** no detalhe, reaproveitando o SHA-256
-já calculado na ingestão. Cliente que revisita um documento recebe `304` sem corpo.
+O que existe no lugar, a custo zero: **ETag** no detalhe, reaproveitando o SHA-256 já
+calculado na ingestão. Cliente que revisita um documento recebe `304` sem corpo.
 
 ## Como reproduzir
 
-Com a API de pé e a base povoada:
+Com a stack de pé (`docker compose --profile completo up -d`) e a base povoada:
 
 ```bash
 docker exec -i fiscal-postgres psql -U fiscal -d fiscal < carga/povoar.sql
@@ -72,8 +84,8 @@ docker run --rm -i --add-host=host.docker.internal:host-gateway \
 ```
 
 **No Git Bash do Windows**, prefixe com `MSYS_NO_PATHCONV=1`. Sem isso o MSYS
-converte também o caminho de dentro do container, e o k6 acaba procurando o script
-em `C:/Program Files/Git/carga`:
+converte também o caminho de dentro do container, e o k6 acaba procurando o script em
+`C:/Program Files/Git/carga`:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm -i --add-host=host.docker.internal:host-gateway \
@@ -83,6 +95,10 @@ MSYS_NO_PATHCONV=1 docker run --rm -i --add-host=host.docker.internal:host-gatew
 **No PowerShell**, troque o volume por `-v "${PWD}\carga:/carga"`.
 
 Cenários isolados: `-e CENARIO=ingestao` ou `-e CENARIO=consulta`.
-Ao repetir a ingestão, incremente `-e EXECUCAO=N` — sem isso a segunda rodada
-reenvia as mesmas chaves, recebe `200` de replay em vez de `201`, e passa a medir o
-caminho idempotente sem avisar.
+Ao repetir a ingestão, incremente `-e EXECUCAO=N` — sem isso a segunda rodada reenvia
+as mesmas chaves, os itens viram `Duplicado` em vez de `Ingerido`, e a medição passa a
+ser de outro caminho sem avisar.
+
+Detalhe do script: os arquivos do multipart usam nomes de campo distintos
+(`arquivo1`, `arquivo2`, `arquivo3`). O k6 não monta multipart a partir de um array
+sob a mesma chave — a requisição sai malformada e o servidor devolve `415`.
