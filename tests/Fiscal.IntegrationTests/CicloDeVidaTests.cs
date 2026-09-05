@@ -84,6 +84,10 @@ public sealed class CicloDeVidaTests
                 .ShouldBe(original.GetProperty("valorTotal").GetDecimal());
             atualizado.GetProperty("hashConteudo").GetString()
                 .ShouldBe(original.GetProperty("hashConteudo").GetString());
+            // Regressão: o PUT carregava o documento sem os itens e devolvia uma
+            // lista vazia, com o mesmo contrato do GET. Contrato igual, conteúdo
+            // diferente é pior que contrato diferente.
+            atualizado.GetProperty("itens").GetArrayLength().ShouldBe(2);
             atualizado.GetProperty("itens").GetArrayLength()
                 .ShouldBe(original.GetProperty("itens").GetArrayLength());
         }

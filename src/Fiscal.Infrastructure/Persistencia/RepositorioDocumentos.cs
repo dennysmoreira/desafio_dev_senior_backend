@@ -93,6 +93,10 @@ public sealed class RepositorioDocumentos(FiscalDbContext db) : IRepositorioDocu
 
     public Task<DocumentoFiscal?> ObterParaEdicaoAsync(Guid id, CancellationToken cancellationToken) =>
         SemFiltroDeExclusao()
+            // Com os itens: o PUT devolve o mesmo contrato do GET de detalhe, e sem
+            // isto a resposta traria "itens": [] — um cliente concluiria que o
+            // documento não tem itens só porque acabou de editar a observação.
+            .Include(documento => documento.Itens)
             .FirstOrDefaultAsync(documento => documento.Id == id, cancellationToken);
 
     public Task SalvarAsync(CancellationToken cancellationToken) => db.SaveChangesAsync(cancellationToken);
