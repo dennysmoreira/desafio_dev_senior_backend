@@ -1,8 +1,11 @@
+using Amazon.S3;
 using Fiscal.Application;
+using Fiscal.Application.Armazenamento;
 using Fiscal.Application.Documentos;
 using Fiscal.Application.Mensageria;
 using Fiscal.Application.Resumos;
 using Fiscal.Application.Seguranca;
+using Fiscal.Infrastructure.Armazenamento;
 using Fiscal.Infrastructure.Mensageria;
 using Fiscal.Infrastructure.Persistencia;
 using Fiscal.Infrastructure.Seguranca;
@@ -47,6 +50,45 @@ public static class DependencyInjection
         services.AddFiscalApplication();
 
         return services;
+    }
+
+    /// <summary>
+    /// Armazenamento do XML original. Chamado pelos dois deployáveis: a API grava, o
+    /// worker lê. O cliente é singleton porque mantém pool de conexões HTTP.
+    /// </summary>
+    public static IServiceCollection AddArmazenamentoDeXml(
+        this IServiceCollection services,
+        OpcoesDeArmazenamento opcoes)
+    {
+        services.AddSingleton(opcoes);
+
+        services.AddSingleton<IAmazonS3>(_ => new AmazonS3Client(
+            opcoes.AccessKey,
+            opcoes.SecretKey,
+            new AmazonS3Config
+            {
+                ServiceURL = opcoes.Endpoint,
+
+                // Obrigatório para MinIO e qualquer S3 self-hosted: sem isto o SDK
+                // monta a URL como bucket.host, que só funciona na AWS.
+                ForcePathStyle = true,
+                AuthenticationRegion = "us-east-1",
+            }));
+
+        services.AddSingleton<IArmazenamentoDeXml, ArmazenamentoS3>();
+
+        return services;
+    }
+
+    /// <summary>Cria o bucket se não existir, para não haver passo manual no start.</summary>
+    public static async Task PrepararArmazenamentoAsync(
+        this IServiceProvider provedor,
+        CancellationToken cancellationToken)
+    {
+        var cliente = provedor.GetRequiredService<IAmazonS3>();
+        var opcoes = provedor.GetRequiredService<OpcoesDeArmazenamento>();
+
+        await ArmazenamentoS3.GarantirBucketAsync(cliente, opcoes, cancellationToken);
     }
 
     /// <summary>
