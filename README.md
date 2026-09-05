@@ -205,6 +205,78 @@ consumidor fez alguma coisa.
 
 ---
 
+## Desenho
+
+### Em execução
+
+```mermaid
+flowchart LR
+    C(["Cliente"]) -->|"POST e GET /documentos"| API
+
+    subgraph proc1["Processo 1"]
+        API["Fiscal.Api<br/>endpoints e autenticação"]
+    end
+
+    subgraph broker["RabbitMQ"]
+        direction TB
+        Q1["fila do resumo"]
+        Q2["fila de espera, com TTL"]
+        Q3["fila venenosa"]
+    end
+
+    subgraph proc2["Processo 2, escala sozinho"]
+        W["Fiscal.Worker<br/>consumidor com retry"]
+    end
+
+    DB[("PostgreSQL<br/>documentos · resumo · inbox")]
+
+    API -->|"publica evento"| Q1
+    Q1 --> W
+    W -->|"falha transitória"| Q2
+    Q2 -->|"volta após o TTL"| Q1
+    W -->|"erro permanente"| Q3
+    API --> DB
+    W --> DB
+```
+
+A API só publica; quem consome é o worker, em outro processo. Erro permanente vai
+direto para a fila venenosa, sem nenhuma tentativa; falha transitória espera no
+broker em vez de ocupar o consumidor.
+
+### Dependências entre camadas
+
+```mermaid
+flowchart LR
+    API["Fiscal.Api<br/>endpoints, autenticação"] --> INFRA
+    WRK["Fiscal.Worker<br/>consome a fila"] --> INFRA
+    INFRA["Fiscal.Infrastructure<br/>EF Core, RabbitMQ, parsers"] --> APP
+    APP["Fiscal.Application<br/>casos de uso e interfaces"] --> DOM
+    DOM["Fiscal.Domain<br/>entidades e regras<br/>zero PackageReference"]
+```
+
+A seta é a direção da dependência: tudo aponta para o domínio, que não conhece
+ninguém. Os dois deployáveis compartilham as mesmas bibliotecas — o que muda entre
+eles é só o host e o que cada um registra no contêiner.
+
+Cinco testes de arquitetura falham se alguma dessas setas se inverter, ou se EF Core
+e `RabbitMQ.Client` vazarem para fora da infraestrutura.
+
+```
+src/
+  Fiscal.Domain/          entidades, regras, mascaramento, hash
+  Fiscal.Application/     casos de uso e as interfaces que eles exigem
+  Fiscal.Infrastructure/  EF Core, repositórios, parsers, RabbitMQ
+  Fiscal.Api/             deployável 1: HTTP
+  Fiscal.Worker/          deployável 2: consumo da fila
+tests/
+  Fiscal.UnitTests/         44 testes, sem dependência externa
+  Fiscal.IntegrationTests/  21 testes, PostgreSQL real via Testcontainers
+  Fiscal.ArchitectureTests/ 5 regras de direção de dependência
+carga/                      script k6 e resultados medidos
+```
+
+---
+
 ## Decisões de arquitetura e modelagem
 
 ### 1. O documento fiscal é imutável
