@@ -1,8 +1,11 @@
 # API de documentos fiscais
 
 Recebe XML de NF-e, persiste os dados, publica um evento no RabbitMQ e mantém um
-resumo por emitente alimentado pelo consumidor. Expõe consulta, alteração e
+resumo por emitente alimentado por um worker separado. Expõe consulta, alteração e
 exclusão sobre os documentos recebidos.
+
+**Dois deployáveis:** `Fiscal.Api` serve HTTP e publica; `Fiscal.Worker` consome a
+fila. Ver [decisão 9](#9-o-consumidor-roda-fora-da-api).
 
 .NET 10 · PostgreSQL 17 · RabbitMQ 4 · EF Core 10 · NUnit + Testcontainers · k6
 
@@ -18,22 +21,32 @@ Há dois caminhos. Os dois deixam a API em `http://localhost:5099`.
 docker compose --profile completo up -d
 ```
 
-Compila a API, sobe Postgres e RabbitMQ, espera os dois ficarem saudáveis e então
-inicia. **Não exige o SDK do .NET instalado.** É o caminho mais previsível se você
-quer só ver funcionando.
+Compila API e worker, sobe Postgres e RabbitMQ, espera os dois ficarem saudáveis e
+então inicia os dois processos. **Não exige o SDK do .NET instalado.** É o caminho
+mais previsível se você quer só ver funcionando.
 
-### API local — para depurar
+Para ver o consumo escalando sem tocar na API:
+
+```bash
+docker compose --profile completo up -d --scale worker=3
+```
+
+### Local — para depurar
 
 ```bash
 docker compose up -d
-dotnet run --project src/Fiscal.Api
+dotnet run --project src/Fiscal.Api      # um terminal
+dotnet run --project src/Fiscal.Worker   # outro terminal
 ```
 
-Sobe só a infraestrutura em container e roda a API na sua máquina, abrindo a
-documentação interativa no navegador. Exige o **SDK do .NET 10**.
+Sobe só a infraestrutura em container e roda os dois processos na sua máquina,
+abrindo a documentação interativa no navegador. Exige o **SDK do .NET 10**.
 
-Os dois convivem porque a API fica atrás de um profile do compose: sem isso, ela
-ocuparia a 5099 e brigaria com o `dotnet run`.
+Rodar só a API funciona: a ingestão publica normalmente e as mensagens ficam na fila
+até um worker subir. O que não acontece sem ele é o resumo ser atualizado.
+
+Os dois modos convivem porque API e worker ficam atrás de um profile do compose: sem
+isso a API ocuparia a 5099 e brigaria com o `dotnet run`.
 
 ### Em qualquer um dos dois
 
@@ -50,6 +63,7 @@ Para derrubar tudo, incluindo os dados: `docker compose --profile completo down 
 | OpenAPI | `/openapi/v1.json` |
 | Saúde | `/health` |
 | Painel do RabbitMQ | `http://localhost:15672` — `fiscal` / `fiscal` |
+| Log do worker | `docker compose logs -f worker` |
 
 **Sem Docker:** aponte `ConnectionStrings:Fiscal` e `ConnectionStrings:RabbitMq` em
 `src/Fiscal.Api/appsettings.json` para instâncias suas. Se `RabbitMq` ficar vazia, a
@@ -321,6 +335,40 @@ mesma ingestão sempre produz a mesma identidade.
 O agregado do resumo foi escolhido de propósito por ser um **acumulador**: se o
 consumidor não fosse idempotente, a reentrega inflaria a soma silenciosamente. O
 defeito apareceria nos números, não numa exceção.
+
+### 9. O consumidor roda fora da API
+
+`Fiscal.Api` publica; `Fiscal.Worker` consome. São dois processos, dois containers,
+dois ciclos de vida — compartilhando as mesmas bibliotecas de domínio, aplicação e
+infraestrutura.
+
+Enquanto o consumidor era um serviço hospedado dentro do processo web, três coisas
+ficavam acopladas sem que ninguém tivesse escolhido isso:
+
+- **escalar multiplicava consumidores.** Subir três réplicas da API para aguentar
+  ingestão dava três consumidores de brinde, cada um com o próprio prefetch;
+- **deploy da API interrompia mensagem em processamento.** O que deveria ser
+  drenagem de requisições HTTP virava também interrupção de consumo;
+- **os perfis de carga são diferentes.** A API é latência sob requisições curtas; o
+  consumidor é vazão sobre trabalho em lote. Dimensionar os dois com o mesmo número
+  não serve bem a nenhum.
+
+O acoplamento estava só na composição: um único método registrava publicador e
+consumidor juntos. Hoje são dois — `AddPublicadorRabbitMq` e `AddConsumidorDeResumo` —
+e cada host escolhe o seu.
+
+**Nenhuma classe do consumidor mudou.** Ele já recebia tudo por interface e abria o
+próprio escopo; nunca soube que estava dentro de um processo web. A separação custou
+meia hora porque a mensageria estava atrás de abstração — se `RabbitMQ.Client`
+estivesse espalhado pelo código, seria refatoração de dias.
+
+Verificado com a stack de pé: três workers concorrendo na mesma fila, a API
+reiniciada sem derrubar nenhum, e quatro documentos ingeridos depois do restart
+produzindo R$ 1.200 no resumo — **sem dupla contagem apesar dos três consumidores
+competindo**, que é o inbox fazendo o trabalho dele.
+
+Os dois processos aplicam migrations no start. Não há corrida: o EF Core adquire lock
+exclusivo antes de migrar, então quem chega depois espera e encontra o schema em dia.
 
 ---
 

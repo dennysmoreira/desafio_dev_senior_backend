@@ -15,6 +15,10 @@ builder.Services.AddFiscalInfrastructure(
     builder.Configuration.GetConnectionString("Fiscal")
     ?? throw new InvalidOperationException("ConnectionStrings:Fiscal não configurada."));
 
+// A API só PUBLICA. O consumidor vive em Fiscal.Worker, num processo separado, para
+// que escalar a ingestão não multiplique consumidores e um deploy da API não
+// interrompa mensagem em processamento.
+//
 // Sem string de conexão do broker a API sobe com um publicador que só registra em
 // log. É o modo usado pelos testes de integração de ingestão, que não precisam de
 // fila — mas o aviso no start impede que isso passe despercebido em produção.
@@ -26,7 +30,7 @@ if (string.IsNullOrWhiteSpace(brokerUri))
 }
 else
 {
-    builder.Services.AddFiscalMensageria(new OpcoesRabbitMq { Uri = brokerUri });
+    builder.Services.AddPublicadorRabbitMq(new OpcoesRabbitMq { Uri = brokerUri });
 }
 
 builder.Services.AddOpenApi();
@@ -48,8 +52,8 @@ app.UseMiddleware<AutenticacaoPorCnpj>(
 if (string.IsNullOrWhiteSpace(brokerUri))
 {
     app.Logger.LogWarning(
-        "ConnectionStrings:RabbitMq não configurada. Eventos serão apenas registrados em log e "
-        + "o consumidor de resumo NÃO está ativo.");
+        "ConnectionStrings:RabbitMq não configurada. Eventos serão apenas registrados em log, "
+        + "sem chegar ao broker nem ao worker.");
 }
 
 app.MapOpenApi();

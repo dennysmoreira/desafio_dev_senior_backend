@@ -58,5 +58,28 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  # Segundo deployável, atrás do mesmo profile. Não publica porta: não serve HTTP.
+  #
+  # Separado da API porque, enquanto o consumidor era hospedado dentro do processo
+  # web, escalar a API multiplicava consumidores sem que ninguém escolhesse isso e um
+  # deploy rolling interrompia mensagem em processamento.
+  worker:
+    profiles: ["completo"]
+    build:
+      context: .
+      dockerfile: src/Fiscal.Worker/Dockerfile
+    # Sem container_name de propósito: nome fixo impede `--scale`, e escalar o
+    # consumidor sem tocar na API é justamente a razão de ele existir separado.
+    # Os consumidores concorrem na mesma fila; o inbox garante que a mesma mensagem
+    # produza efeito uma vez só, independente de quem a pegar.
+    environment:
+      ConnectionStrings__Fiscal: "Host=postgres;Port=5432;Database=fiscal;Username=fiscal;Password=fiscal"
+      ConnectionStrings__RabbitMq: "amqp://fiscal:fiscal@rabbitmq:5672/"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   fiscal-pgdata:

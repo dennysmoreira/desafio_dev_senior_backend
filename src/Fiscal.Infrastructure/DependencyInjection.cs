@@ -50,16 +50,45 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Mensageria. Separada do resto porque os testes de ingestão não precisam de
-    /// broker: eles registram um publicador em log e continuam válidos.
+    /// Conexão com o broker. Chamada pelos dois deployáveis; a conexão é única por
+    /// processo e as sessões saem dela.
     /// </summary>
-    public static IServiceCollection AddFiscalMensageria(
-        this IServiceCollection services,
-        OpcoesRabbitMq opcoes)
+    private static IServiceCollection AddConexaoRabbitMq(this IServiceCollection services, OpcoesRabbitMq opcoes)
     {
         services.AddSingleton(opcoes);
         services.AddSingleton<ConexaoRabbitMq>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Lado de escrita da mensageria — o que a API precisa.
+    /// <para>
+    /// Publicar e consumir são registrados separadamente de propósito. Quando os dois
+    /// vinham no mesmo método, hospedar a API implicava hospedar o consumidor sem
+    /// escolher: subir três réplicas para aguentar ingestão dava três consumidores de
+    /// brinde, e um deploy rolling da API interrompia mensagem em processamento.
+    /// </para>
+    /// </summary>
+    public static IServiceCollection AddPublicadorRabbitMq(
+        this IServiceCollection services,
+        OpcoesRabbitMq opcoes)
+    {
+        services.AddConexaoRabbitMq(opcoes);
         services.AddScoped<IPublicadorEventos, PublicadorRabbitMq>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Lado de leitura da mensageria — o que o worker precisa. Nenhum processo web
+    /// registra isto.
+    /// </summary>
+    public static IServiceCollection AddConsumidorDeResumo(
+        this IServiceCollection services,
+        OpcoesRabbitMq opcoes)
+    {
+        services.AddConexaoRabbitMq(opcoes);
         services.AddHostedService<ConsumidorResumo>();
 
         return services;
@@ -74,9 +103,14 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Aplica migrations pendentes. Chamado no start da API para que o avaliador
-    /// suba tudo com um comando. Nada de EnsureCreated: o schema versionado é o
-    /// mesmo em qualquer ambiente.
+    /// Aplica migrations pendentes. Chamado no start dos dois deployáveis para que o
+    /// avaliador suba tudo com um comando. Nada de EnsureCreated: o schema versionado
+    /// é o mesmo em qualquer ambiente.
+    /// <para>
+    /// API e worker sobem em paralelo e os dois chamam este método. Não há corrida: o
+    /// EF Core adquire lock exclusivo antes de migrar, então o segundo espera o
+    /// primeiro terminar e encontra o schema em dia.
+    /// </para>
     /// </summary>
     public static async Task MigrarBancoAsync(this IServiceProvider provedor, CancellationToken cancellationToken)
     {

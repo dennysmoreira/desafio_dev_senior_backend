@@ -33,6 +33,8 @@ public sealed class RegrasDeArquiteturaTests
     private static readonly Assembly Aplicacao = typeof(RegistrarDocumento).Assembly;
     private static readonly Assembly Api = typeof(Program).Assembly;
 
+    private static readonly Assembly Worker = typeof(Fiscal.Worker.PontoDeEntrada).Assembly;
+
     /// <summary>
     /// O domínio é o centro: as regras do documento fiscal não podem depender de
     /// como ele é guardado, entregue ou exposto. Se esta regra cair, mover de
@@ -61,11 +63,16 @@ public sealed class RegrasDeArquiteturaTests
     /// A regra que mais diz sobre o desenho. Se um endpoint ou um caso de uso
     /// conhecesse <c>RabbitMQ.Client</c>, trocar de broker viraria uma varredura pelo
     /// código inteiro — e testar o consumo exigiria um broker de verdade.
+    /// <para>
+    /// Vale inclusive para o worker, cuja razão de existir é consumir a fila: ele
+    /// compõe o consumidor por uma extensão da infraestrutura e não toca no cliente
+    /// do broker.
+    /// </para>
     /// </summary>
     [Test]
     public void Nada_fora_da_infraestrutura_conhece_o_cliente_do_rabbitmq()
     {
-        foreach (var assembly in new[] { Dominio, Aplicacao, Api })
+        foreach (var assembly in new[] { Dominio, Aplicacao, Api, Worker })
         {
             Verificar(Types.InAssembly(assembly).ShouldNot().HaveDependencyOn("RabbitMQ"));
         }
@@ -79,7 +86,7 @@ public sealed class RegrasDeArquiteturaTests
     [Test]
     public void Nada_fora_da_infraestrutura_conhece_o_ef_core_nem_o_npgsql()
     {
-        foreach (var assembly in new[] { Dominio, Aplicacao, Api })
+        foreach (var assembly in new[] { Dominio, Aplicacao, Api, Worker })
         {
             Verificar(
                 Types.InAssembly(assembly)
