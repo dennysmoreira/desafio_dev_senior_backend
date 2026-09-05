@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Fiscal.Api/Fiscal.Api.csproj" />
+    <Project Path="src/Fiscal.Worker/Fiscal.Worker.csproj" />
     <Project Path="src/Fiscal.Application/Fiscal.Application.csproj" />
     <Project Path="src/Fiscal.Domain/Fiscal.Domain.csproj" />
     <Project Path="src/Fiscal.Infrastructure/Fiscal.Infrastructure.csproj" />

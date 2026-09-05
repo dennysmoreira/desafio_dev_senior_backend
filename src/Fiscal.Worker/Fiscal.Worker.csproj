@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fiscal.Infrastructure\Fiscal.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Explícito porque o Central Package Management não resolve a referência que o
+       SDK de Worker acrescentaria sozinho. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>
