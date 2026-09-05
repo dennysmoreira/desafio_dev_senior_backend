@@ -23,13 +23,8 @@ public sealed class IsolamentoTests
     {
         using var clienteA = AmbienteDeTeste.Cliente(CnpjA);
 
-        var resposta = await clienteA.PostAsync(
-            "/documentos",
-            AmbienteDeTeste.CorpoXml(NfeDeTeste.Bytes(NfeDeTeste.Chave(20, CnpjA), CnpjA)));
-
-        var criado = await resposta.Content.ReadFromJsonAsync<JsonElement>();
-
-        _documentoDeA = criado.GetProperty("id").GetGuid();
+        _documentoDeA = await AmbienteDeTeste.IngerirDocumentoAsync(
+            clienteA, NfeDeTeste.Bytes(NfeDeTeste.Chave(20, CnpjA), CnpjA));
     }
 
     [Test]

@@ -1,5 +1,6 @@
 using Fiscal.Application.Seguranca;
 using Fiscal.Domain.Documentos;
+using Fiscal.Domain.Lotes;
 using Fiscal.Domain.Processamento;
 using Fiscal.Domain.Resumos;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,10 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options, I
 
     public DbSet<MensagemProcessada> MensagensProcessadas => Set<MensagemProcessada>();
 
+    public DbSet<LoteDeIngestao> Lotes => Set<LoteDeIngestao>();
+
+    public DbSet<EventoPendente> EventosPendentes => Set<EventoPendente>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(FiscalDbContext).Assembly);
@@ -43,6 +48,14 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options, I
                 FiltrosDeConsulta.IsolamentoPorCnpj,
                 documento => contexto.CnpjAutorizado == null
                     || documento.CnpjEmitente == contexto.CnpjAutorizado);
+
+        // O lote pertence a quem enviou. Mesma regra do documento: o isolamento vive
+        // no modelo, não em cada consulta.
+        modelBuilder.Entity<LoteDeIngestao>()
+            .HasQueryFilter(
+                FiltrosDeConsulta.IsolamentoPorCnpj,
+                lote => contexto.CnpjAutorizado == null
+                    || lote.CnpjProprietario == contexto.CnpjAutorizado);
 
         modelBuilder.Entity<ResumoEmitente>()
             .HasQueryFilter(

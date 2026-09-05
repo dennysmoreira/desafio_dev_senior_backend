@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Fiscal.Application.Mensageria;
-using Fiscal.Application.Resumos;
+using Fiscal.Application.Lotes;
 using Fiscal.Application.Seguranca;
 using Fiscal.Domain.Comum;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,7 +14,8 @@ using RabbitMQ.Client.Events;
 namespace Fiscal.Infrastructure.Mensageria;
 
 /// <summary>
-/// Consome <see cref="DocumentoProcessado"/> e alimenta o resumo por emitente.
+/// Consome <see cref="ArquivoRecebido"/>: baixa o XML do storage, valida, persiste o
+/// documento e avança a máquina de estados do item e do lote.
 /// <para>
 /// A resiliência tem dois níveis, e a diferença entre eles é o que o item 8 do
 /// enunciado pede:
@@ -36,11 +37,11 @@ namespace Fiscal.Infrastructure.Mensageria;
 /// Retentar um XML malformado dez vezes só atrasa a fila e polui o log.
 /// </para>
 /// </summary>
-public sealed class ConsumidorResumo(
+public sealed class ConsumidorDeIngestao(
     ConexaoRabbitMq conexao,
     OpcoesRabbitMq opcoes,
     IServiceScopeFactory fabricaDeEscopos,
-    ILogger<ConsumidorResumo> logger) : BackgroundService
+    ILogger<ConsumidorDeIngestao> logger) : BackgroundService
 {
     private readonly ResiliencePipeline _politica = new ResiliencePipelineBuilder()
         // Teto para o conjunto das tentativas, e ele é a parte mais importante desta
@@ -95,7 +96,7 @@ public sealed class ConsumidorResumo(
         await _canal.BasicConsumeAsync(
             TopologiaRabbitMq.Fila, autoAck: false, consumer: consumidor, cancellationToken: stoppingToken);
 
-        logger.LogInformation("Consumidor de resumo escutando {Fila}.", TopologiaRabbitMq.Fila);
+        logger.LogInformation("Consumidor de ingestão escutando {Fila}.", TopologiaRabbitMq.Fila);
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
@@ -104,11 +105,11 @@ public sealed class ConsumidorResumo(
     {
         var canal = _canal!;
 
-        DocumentoProcessado evento;
+        ArquivoRecebido evento;
 
         try
         {
-            evento = JsonSerializer.Deserialize<DocumentoProcessado>(entrega.Body.Span)
+            evento = JsonSerializer.Deserialize<ArquivoRecebido>(entrega.Body.Span)
                 ?? throw new DomainException("Mensagem vazia.");
         }
         catch (Exception excecao) when (excecao is JsonException or DomainException)
@@ -139,8 +140,8 @@ public sealed class ConsumidorResumo(
 
             logger.LogWarning(
                 excecao,
-                "Mensagem {MensagemId} devolvida para nova tentativa em {Espera}ms.",
-                evento.MensagemId,
+                "Item {ItemId} devolvido para nova tentativa em {Espera}ms.",
+                evento.ItemId,
                 TopologiaRabbitMq.EsperaDeRetryEmMs);
 
             // requeue falso manda para o dead-letter, que é a fila de espera com TTL.
@@ -150,7 +151,7 @@ public sealed class ConsumidorResumo(
         }
     }
 
-    private async Task ProcessarAsync(DocumentoProcessado evento, CancellationToken cancellationToken)
+    private async Task ProcessarAsync(ArquivoRecebido evento, CancellationToken cancellationToken)
     {
         using var escopo = fabricaDeEscopos.CreateScope();
 
@@ -158,11 +159,14 @@ public sealed class ConsumidorResumo(
         // O escopo de sistema é explícito e registra em log — é o rastro de auditoria
         // do acesso cross-tenant.
         var definidor = escopo.ServiceProvider.GetRequiredService<IDefinidorContextoAcesso>();
-        using var _ = definidor.AbrirEscopoDeSistema($"consumidor {AtualizarResumoDoEmitente.NomeDoConsumidor}");
+        using var _ = definidor.AbrirEscopoDeSistema($"consumidor {IngerirArquivo.NomeDoConsumidor}");
 
-        var caso = escopo.ServiceProvider.GetRequiredService<AtualizarResumoDoEmitente>();
+        var caso = escopo.ServiceProvider.GetRequiredService<IngerirArquivo>();
 
-        await caso.ExecutarAsync(evento, cancellationToken);
+        var resultado = await caso.ExecutarAsync(evento, cancellationToken);
+
+        logger.LogInformation(
+            "Item {ItemId} do lote {LoteId}: {Resultado}.", evento.ItemId, evento.LoteId, resultado);
     }
 
     /// <summary>Conta reentregas pelo cabeçalho x-death, mantido pelo próprio broker.</summary>

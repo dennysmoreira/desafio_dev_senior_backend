@@ -9,19 +9,19 @@ namespace Fiscal.Infrastructure.Mensageria;
 /// </para>
 /// <list type="number">
 ///   <item>
-///     <b>Caminho normal</b> — <c>fiscal.documentos</c> entrega em
-///     <c>fiscal.documentos.resumo</c>.
+///     <b>Caminho normal</b> — <c>fiscal.ingestao</c> entrega em
+///     <c>fiscal.ingestao.arquivos</c>.
 ///   </item>
 ///   <item>
 ///     <b>Falha transitória</b> (banco fora, timeout) — a mensagem vai para
-///     <c>fiscal.documentos.retry</c>, uma fila sem consumidor com TTL. Quando o TTL
+///     <c>fiscal.ingestao.retry</c>, uma fila sem consumidor com TTL. Quando o TTL
 ///     expira, o dead-letter da própria fila devolve a mensagem à principal. O
 ///     resultado é uma espera antes de tentar de novo, sem bloquear o canal nem
 ///     ocupar o consumidor num laço.
 ///   </item>
 ///   <item>
 ///     <b>Falha permanente</b> (XML inválido, layout desconhecido) ou tentativas
-///     esgotadas — <c>fiscal.documentos.poison</c>, sem consumidor, para inspeção
+///     esgotadas — <c>fiscal.ingestao.poison</c>, sem consumidor, para inspeção
 ///     humana. Retentar não adianta: nenhuma tentativa futura faz um XML malformado
 ///     virar válido.
 ///   </item>
@@ -29,17 +29,17 @@ namespace Fiscal.Infrastructure.Mensageria;
 /// </summary>
 public static class TopologiaRabbitMq
 {
-    public const string Exchange = "fiscal.documentos";
+    public const string Exchange = "fiscal.ingestao";
 
-    public const string ExchangeDeRetry = "fiscal.documentos.retry";
+    public const string ExchangeDeRetry = "fiscal.ingestao.retry";
 
-    public const string Fila = "fiscal.documentos.resumo";
+    public const string Fila = "fiscal.ingestao.arquivos";
 
-    public const string FilaDeRetry = "fiscal.documentos.retry";
+    public const string FilaDeRetry = "fiscal.ingestao.retry";
 
-    public const string FilaVenenosa = "fiscal.documentos.poison";
+    public const string FilaVenenosa = "fiscal.ingestao.poison";
 
-    public const string ChaveDeRoteamento = "documento.processado";
+    public const string ChaveDeRoteamento = "arquivo.recebido";
 
     /// <summary>Espera antes de reentregar uma mensagem que falhou por causa transitória.</summary>
     public const int EsperaDeRetryEmMs = 10_000;

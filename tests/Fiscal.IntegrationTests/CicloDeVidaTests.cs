@@ -95,8 +95,7 @@ public sealed class CicloDeVidaTests
         var chave = NfeDeTeste.Chave(33, Cnpj);
         var xml = NfeDeTeste.Bytes(chave, Cnpj);
 
-        var criado = await _cliente.PostAsync("/documentos", AmbienteDeTeste.CorpoXml(xml));
-        var id = (await criado.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var id = await AmbienteDeTeste.IngerirDocumentoAsync(_cliente, xml);
 
         var exclusao = await _cliente.DeleteAsync($"/documentos/{id}");
         var repetida = await _cliente.DeleteAsync($"/documentos/{id}");
@@ -106,7 +105,8 @@ public sealed class CicloDeVidaTests
         // O ponto sutil: o índice único não filtra exclusão lógica, então reenviar o
         // XML não recria a linha. Se filtrasse, existiriam dois registros para o
         // mesmo documento fiscal — e a idempotência morreria no caso menos óbvio.
-        var reenvio = await _cliente.PostAsync("/documentos", AmbienteDeTeste.CorpoXml(xml));
+        // No fluxo em lote isso aparece como um item marcado "Duplicado".
+        var reenvio = await AmbienteDeTeste.IngerirLoteAsync(_cliente, ("reenvio.xml", xml));
 
         var pagina = await _cliente.GetFromJsonAsync<JsonElement>("/documentos?tamanho=100");
         var aindaVisivel = pagina.GetProperty("itens").EnumerateArray()
@@ -118,7 +118,8 @@ public sealed class CicloDeVidaTests
             repetida.StatusCode.ShouldBe(HttpStatusCode.NoContent);
             detalhe.StatusCode.ShouldBe(HttpStatusCode.Gone);
             alteracao.StatusCode.ShouldBe(HttpStatusCode.Gone);
-            reenvio.StatusCode.ShouldBe(HttpStatusCode.OK);
+            reenvio.Duplicados.ShouldBe(1);
+            reenvio.Itens[0].DocumentoId.ShouldBe(id);
             aindaVisivel.ShouldBeFalse();
         }
     }
@@ -161,14 +162,7 @@ public sealed class CicloDeVidaTests
         resposta.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    private async Task<Guid> IngerirAsync(int sequencial)
-    {
-        var resposta = await _cliente.PostAsync(
-            "/documentos",
-            AmbienteDeTeste.CorpoXml(NfeDeTeste.Bytes(NfeDeTeste.Chave(sequencial, Cnpj), Cnpj)));
-
-        var corpo = await resposta.Content.ReadFromJsonAsync<JsonElement>();
-
-        return corpo.GetProperty("id").GetGuid();
-    }
+    private Task<Guid> IngerirAsync(int sequencial) =>
+        AmbienteDeTeste.IngerirDocumentoAsync(
+            _cliente, NfeDeTeste.Bytes(NfeDeTeste.Chave(sequencial, Cnpj), Cnpj));
 }

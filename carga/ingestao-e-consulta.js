@@ -7,12 +7,6 @@ const BASE = __ENV.BASE_URL || 'http://host.docker.internal:5099';
 const CHAVE_API = __ENV.API_KEY || 'chave-de-desenvolvimento';
 const CNPJ = __ENV.CNPJ || '12345678000199';
 
-const CABECALHOS_XML = {
-  'Content-Type': 'application/xml',
-  'X-Api-Key': CHAVE_API,
-  'X-Cnpj': CNPJ,
-};
-
 const CABECALHOS_JSON = {
   'X-Api-Key': CHAVE_API,
   'X-Cnpj': CNPJ,
@@ -55,7 +49,7 @@ export const options = {
   // contado como falha e faria o k6 sair com erro numa medição bem-sucedida.
   thresholds: Object.assign(
     { 'http_req_failed': ['rate<0.01'] },
-    CENARIO !== 'consulta' ? { 'http_req_duration{cenario:ingestao}': ['p(95)<1000'] } : {},
+    CENARIO !== 'consulta' ? { 'http_req_duration{cenario:ingestao}': ['p(95)<1500'] } : {},
     CENARIO !== 'ingestao' ? { 'http_req_duration{cenario:consulta}': ['p(95)<300'] } : {},
   ),
 };
@@ -89,10 +83,20 @@ export function ingerir() {
   // rodadas anteriores, então toda ingestão é de fato uma inserção.
   const numero = (100000000 + EXECUCAO * 1000000 + __VU * 10000 + __ITER) % 1000000000;
 
-  const resposta = http.post(`${BASE}/documentos`, nfe(numero), { headers: CABECALHOS_XML });
+  // Um lote de 3 arquivos por requisição. Mede o caminho síncrono como ele é usado
+  // de verdade: hash, gravação no storage e registro — sem parse, que é do worker.
+  // Campos com nomes distintos: o k6 não monta multipart a partir de um array sob
+  // a mesma chave — devolve 415. O endpoint lê Form.Files e ignora o nome do campo.
+  const corpo = {
+    arquivo1: http.file(nfe(numero), 'a.xml', 'application/xml'),
+    arquivo2: http.file(nfe(numero + 1), 'b.xml', 'application/xml'),
+    arquivo3: http.file(nfe(numero + 2), 'c.xml', 'application/xml'),
+  };
+
+  const resposta = http.post(`${BASE}/lotes`, corpo, { headers: CABECALHOS_JSON });
 
   check(resposta, {
-    'ingestao criou o documento': (r) => r.status === 201,
+    'lote aceito': (r) => r.status === 202,
   });
 }
 
