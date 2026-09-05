@@ -94,8 +94,18 @@ excluído. Rodando pelo Runner, ela é um teste de fumaça da API inteira.
 Para rodar sem abrir o Postman, com o runner oficial:
 
 ```bash
-docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD:/etc/newman"   postman/newman run /etc/newman/postman/documentos-fiscais.postman_collection.json   --env-var "baseUrl=http://host.docker.internal:5099"
+docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD:/etc/newman" postman/newman run /etc/newman/postman/documentos-fiscais.postman_collection.json --env-var "baseUrl=http://host.docker.internal:5099"
 ```
+
+**No Git Bash do Windows**, prefixe com `MSYS_NO_PATHCONV=1` — pelo mesmo motivo do
+k6: sem isso o MSYS reescreve `/etc/newman` como caminho do Windows e o newman
+procura a coleção em `C:/Program Files/Git/etc/newman`.
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm --add-host=host.docker.internal:host-gateway -v "$PWD:/etc/newman" postman/newman run /etc/newman/postman/documentos-fiscais.postman_collection.json --env-var "baseUrl=http://host.docker.internal:5099"
+```
+
+**No PowerShell**, troque o volume por `-v "${PWD}:/etc/newman"`.
 
 Alternativa sem coleção: o Postman importa OpenAPI direto de `/openapi/v1.json`.
 
