@@ -1,7 +1,10 @@
 using Amazon.S3;
 using Fiscal.Application;
 using Fiscal.Application.Armazenamento;
+using Fiscal.Application.Comum;
 using Fiscal.Application.Documentos;
+using Fiscal.Application.Lotes;
+using Fiscal.Application.Processamento;
 using Fiscal.Application.Mensageria;
 using Fiscal.Application.Resumos;
 using Fiscal.Application.Seguranca;
@@ -46,6 +49,9 @@ public static class DependencyInjection
         services.AddScoped<ISeletorDeParser, SeletorDeParser>();
 
         services.AddScoped<IRepositorioResumos, RepositorioResumos>();
+        services.AddScoped<IRepositorioLotes, RepositorioLotes>();
+        services.AddScoped<IRepositorioProcessamento, RepositorioProcessamento>();
+        services.AddScoped<IUnidadeDeTrabalho, UnidadeDeTrabalho>();
 
         services.AddFiscalApplication();
 
@@ -119,6 +125,9 @@ public static class DependencyInjection
         services.AddConexaoRabbitMq(opcoes);
         services.AddScoped<IPublicadorEventos, PublicadorRabbitMq>();
 
+        // O relay acompanha o publicador: o outbox pertence a quem escreve.
+        services.AddHostedService<RelayDoOutbox>();
+
         return services;
     }
 
@@ -126,12 +135,12 @@ public static class DependencyInjection
     /// Lado de leitura da mensageria — o que o worker precisa. Nenhum processo web
     /// registra isto.
     /// </summary>
-    public static IServiceCollection AddConsumidorDeResumo(
+    public static IServiceCollection AddConsumidorDeIngestao(
         this IServiceCollection services,
         OpcoesRabbitMq opcoes)
     {
         services.AddConexaoRabbitMq(opcoes);
-        services.AddHostedService<ConsumidorResumo>();
+        services.AddHostedService<ConsumidorDeIngestao>();
 
         return services;
     }

@@ -1,42 +1,20 @@
 using Fiscal.Application.Documentos;
 using Fiscal.Domain.Documentos;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Fiscal.Infrastructure.Persistencia;
 
 public sealed class RepositorioDocumentos(FiscalDbContext db) : IRepositorioDocumentos
 {
-    /// <summary>unique_violation no catálogo de erros do PostgreSQL.</summary>
-    private const string ViolacaoDeUnicidade = "23505";
-
     public async Task<bool> TentarInserirAsync(DocumentoFiscal documento, CancellationToken cancellationToken)
     {
         db.Documentos.Add(documento);
 
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (DbUpdateException excecao)
-            when (excecao.InnerException is PostgresException { SqlState: ViolacaoDeUnicidade })
-        {
-            // Perdemos a corrida para outra requisição que gravou a mesma chave, ou
-            // é reenvio. Nos dois casos o banco decidiu — não houve janela entre
-            // verificar e gravar, porque não houve verificação.
-            //
-            // Desanexar é obrigatório: o rastreador continuaria segurando a entidade
-            // recusada e tentaria gravá-la de novo no próximo SaveChanges.
-            db.Entry(documento).State = EntityState.Detached;
-
-            foreach (var item in documento.Itens)
-            {
-                db.Entry(item).State = EntityState.Detached;
-            }
-
-            return false;
-        }
+        // Sem SELECT antes: o índice único decide, e não há janela entre verificar e
+        // gravar. O savepoint dentro de Escrita.TentarAsync é o que permite fazer
+        // isso dentro de uma transação maior sem abortá-la.
+        return await Escrita.TentarAsync(
+            db, "documento", [documento, .. documento.Itens], cancellationToken);
     }
 
     public Task<DocumentoFiscal?> ObterPorChaveAsync(

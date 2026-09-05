@@ -1,4 +1,4 @@
-using System.Text.Json;
+using System.Text;
 using Fiscal.Application.Mensageria;
 using RabbitMQ.Client;
 
@@ -6,7 +6,7 @@ namespace Fiscal.Infrastructure.Mensageria;
 
 public sealed class PublicadorRabbitMq(ConexaoRabbitMq conexao) : IPublicadorEventos
 {
-    public async Task PublicarAsync(DocumentoProcessado evento, CancellationToken cancellationToken)
+    public async Task PublicarAsync(string mensagemId, string payload, CancellationToken cancellationToken)
     {
         var ligacao = await conexao.ObterAsync(cancellationToken);
 
@@ -16,14 +16,13 @@ public sealed class PublicadorRabbitMq(ConexaoRabbitMq conexao) : IPublicadorEve
 
         var propriedades = new BasicProperties
         {
-            // A identidade da mensagem é o hash do XML, não um GUID novo a cada
-            // publicação. É o que permite ao inbox do consumidor reconhecer uma
-            // reentrega: mesma ingestão, sempre a mesma identidade.
-            MessageId = evento.MensagemId,
+            // Identidade estável da mensagem — é por ela que o inbox do worker
+            // reconhece reentrega. Vem do outbox, não é gerada aqui.
+            MessageId = mensagemId,
             ContentType = "application/json",
 
-            // Sobrevive a reinício do broker. Sem isto, a fila é perdida junto com
-            // o processo e documentos processados nunca chegam ao resumo.
+            // Sobrevive a reinício do broker. Sem isto, uma fila perdida com o
+            // processo deixaria lotes inteiros presos em "Recebido" para sempre.
             Persistent = true,
         };
 
@@ -32,7 +31,7 @@ public sealed class PublicadorRabbitMq(ConexaoRabbitMq conexao) : IPublicadorEve
             TopologiaRabbitMq.ChaveDeRoteamento,
             mandatory: false,
             basicProperties: propriedades,
-            body: JsonSerializer.SerializeToUtf8Bytes(evento),
+            body: Encoding.UTF8.GetBytes(payload),
             cancellationToken: cancellationToken);
     }
 }

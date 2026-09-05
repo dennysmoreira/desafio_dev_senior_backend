@@ -1,95 +1,110 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Fiscal.Application.Mensageria;
-using Fiscal.Application.Resumos;
-using Fiscal.Application.Seguranca;
-using Microsoft.Extensions.DependencyInjection;
+using Fiscal.UnitTests.Recursos;
 
 namespace Fiscal.IntegrationTests;
 
 /// <summary>
-/// Exercita o trabalho do consumidor contra o banco real, sem depender do broker.
-/// A entrega em si é responsabilidade do RabbitMQ; o que precisa ser provado aqui é
-/// que o efeito colateral resiste a reentrega — que é o que o item 8 pede quando
-/// fala em "tratar reprocessamentos de forma segura".
+/// O resumo é um acumulador, e foi escolhido assim de propósito: se a ingestão não
+/// fosse idempotente, uma reentrega inflaria a soma em silêncio — o defeito
+/// apareceria nos números, não numa exceção. Estes testes olham exatamente os
+/// números.
 /// </summary>
 [TestFixture]
 public sealed class ResumoDoConsumidorTests
 {
     private const string Cnpj = "55555555000155";
-    private const string CnpjVizinho = "66666666000166";
 
-    private static readonly DateTimeOffset Emissao = new(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+    private HttpClient _cliente = null!;
 
-    [Test]
-    public async Task A_mesma_mensagem_entregue_duas_vezes_conta_o_documento_uma_vez()
-    {
-        var evento = Evento("mensagem-repetida", Cnpj, 150.00m);
+    [SetUp]
+    public void Preparar() => _cliente = AmbienteDeTeste.Cliente(Cnpj);
 
-        await ConsumirAsync(evento);
-        await ConsumirAsync(evento);
-
-        var resumo = await ObterResumoAsync(Cnpj, "2026-03");
-
-        using (Assert.EnterMultipleScope())
-        {
-            resumo.GetProperty("quantidadeDocumentos").GetInt32().ShouldBe(1);
-            resumo.GetProperty("valorTotal").GetDecimal().ShouldBe(150.00m);
-        }
-    }
+    [TearDown]
+    public void Encerrar() => _cliente.Dispose();
 
     [Test]
-    public async Task Mensagens_distintas_acumulam_no_mesmo_periodo()
+    public async Task Documentos_do_mesmo_periodo_acumulam_no_mesmo_resumo()
     {
-        // Contraprova da anterior: sem ela, um consumidor que ignorasse tudo passaria.
-        await ConsumirAsync(Evento("acumula-1", CnpjVizinho, 100.00m));
-        await ConsumirAsync(Evento("acumula-2", CnpjVizinho, 250.50m));
+        await AmbienteDeTeste.IngerirLoteAsync(
+            _cliente,
+            ("um.xml", NfeDeTeste.Bytes(NfeDeTeste.Chave(60, Cnpj), Cnpj, valorTotal: 100m)),
+            ("dois.xml", NfeDeTeste.Bytes(NfeDeTeste.Chave(61, Cnpj), Cnpj, valorTotal: 250m)));
 
-        var resumo = await ObterResumoAsync(CnpjVizinho, "2026-03");
+        var resumo = await ObterAsync("2026-01");
 
         using (Assert.EnterMultipleScope())
         {
             resumo.GetProperty("quantidadeDocumentos").GetInt32().ShouldBe(2);
-            resumo.GetProperty("valorTotal").GetDecimal().ShouldBe(350.50m);
+            resumo.GetProperty("valorTotal").GetDecimal().ShouldBe(350m);
         }
     }
 
     [Test]
-    public async Task Um_contribuinte_nao_enxerga_o_resumo_de_outro()
+    public async Task Reprocessar_o_lote_inteiro_nao_conta_nada_duas_vezes()
     {
-        await ConsumirAsync(Evento("isolamento-resumo", Cnpj, 10.00m));
+        var cnpj = "56565656000156";
+        using var cliente = AmbienteDeTeste.Cliente(cnpj);
 
-        using var cliente = AmbienteDeTeste.Cliente(CnpjVizinho);
-        var resumos = await cliente.GetFromJsonAsync<JsonElement>("/resumos");
+        var situacao = await AmbienteDeTeste.IngerirLoteAsync(
+            cliente, ("nfe.xml", NfeDeTeste.Bytes(NfeDeTeste.Chave(62, cnpj), cnpj, valorTotal: 400m)));
+
+        // Segunda passada, como o RabbitMQ faria numa reentrega.
+        await AmbienteDeTeste.ProcessarAsync(
+            (await cliente.GetFromJsonAsync<JsonElement>("/lotes")).EnumerateArray().First()
+                .GetProperty("id").GetGuid());
+
+        var resumo = await ObterAsync("2026-01", cliente, cnpj);
+
+        using (Assert.EnterMultipleScope())
+        {
+            situacao.Ingeridos.ShouldBe(1);
+            resumo.GetProperty("quantidadeDocumentos").GetInt32().ShouldBe(1);
+            resumo.GetProperty("valorTotal").GetDecimal().ShouldBe(400m);
+        }
+    }
+
+    [Test]
+    public async Task Documento_rejeitado_nao_entra_no_resumo()
+    {
+        var cnpj = "57575757000157";
+        using var cliente = AmbienteDeTeste.Cliente(cnpj);
+
+        await AmbienteDeTeste.IngerirLoteAsync(
+            cliente,
+            ("bom.xml", NfeDeTeste.Bytes(NfeDeTeste.Chave(63, cnpj), cnpj, valorTotal: 500m)),
+            ("ruim.xml", "lixo"u8.ToArray()));
+
+        var resumo = await ObterAsync("2026-01", cliente, cnpj);
+
+        using (Assert.EnterMultipleScope())
+        {
+            resumo.GetProperty("quantidadeDocumentos").GetInt32().ShouldBe(1);
+            resumo.GetProperty("valorTotal").GetDecimal().ShouldBe(500m);
+        }
+    }
+
+    [Test]
+    public async Task Um_contribuinte_nao_ve_o_resumo_de_outro()
+    {
+        using var vizinho = AmbienteDeTeste.Cliente("58585858000158");
+
+        var resumos = await vizinho.GetFromJsonAsync<JsonElement>("/resumos");
 
         resumos.EnumerateArray()
             .Select(r => r.GetProperty("cnpjEmitente").GetString())
             .ShouldNotContain(Cnpj);
     }
 
-    private static DocumentoProcessado Evento(string mensagemId, string cnpj, decimal valor) =>
-        new(mensagemId, Guid.CreateVersion7(), "chave-irrelevante-aqui", cnpj, Emissao, valor);
-
-    /// <summary>Faz o que o consumidor faz ao receber a mensagem, incluindo o escopo de sistema.</summary>
-    private static async Task ConsumirAsync(DocumentoProcessado evento)
+    private async Task<JsonElement> ObterAsync(
+        string competencia,
+        HttpClient? cliente = null,
+        string? cnpj = null)
     {
-        using var escopo = AmbienteDeTeste.CriarEscopo();
+        var resumos = await (cliente ?? _cliente).GetFromJsonAsync<JsonElement>("/resumos");
 
-        var definidor = escopo.ServiceProvider.GetRequiredService<IDefinidorContextoAcesso>();
-        using var _ = definidor.AbrirEscopoDeSistema("teste do consumidor");
-
-        var caso = escopo.ServiceProvider.GetRequiredService<AtualizarResumoDoEmitente>();
-
-        await caso.ExecutarAsync(evento, CancellationToken.None);
-    }
-
-    private static async Task<JsonElement> ObterResumoAsync(string cnpj, string competencia)
-    {
-        using var cliente = AmbienteDeTeste.Cliente(cnpj);
-
-        var resumos = await cliente.GetFromJsonAsync<JsonElement>("/resumos");
-
-        return resumos.EnumerateArray()
-            .First(r => r.GetProperty("competencia").GetString() == competencia);
+        return resumos.EnumerateArray().Single(r =>
+            r.GetProperty("cnpjEmitente").GetString() == (cnpj ?? Cnpj)
+            && r.GetProperty("competencia").GetString() == competencia);
     }
 }

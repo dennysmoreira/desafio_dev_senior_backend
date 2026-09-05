@@ -1,4 +1,5 @@
 using Fiscal.Application.Documentos;
+using Fiscal.Application.Lotes;
 using Fiscal.Application.Resumos;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -13,12 +14,17 @@ public static class DependencyInjection
         // por FakeTimeProvider sem que o domínio precise conhecer abstração nossa.
         services.TryAddSingleton(TimeProvider.System);
 
-        services.AddScoped<RegistrarDocumento>();
-        services.AddScoped<ConsultarDocumentos>();
-        services.AddScoped<ObterDocumento>();
+        // Escrita
+        services.AddScoped<ReceberLote>();
+        services.AddScoped<IngerirArquivo>();
         services.AddScoped<AtualizarObservacaoDocumento>();
         services.AddScoped<ExcluirDocumento>();
-        services.AddScoped<AtualizarResumoDoEmitente>();
+
+        // Leitura
+        services.AddScoped<ConsultarLote>();
+        services.AddScoped<ListarLotes>();
+        services.AddScoped<ConsultarDocumentos>();
+        services.AddScoped<ObterDocumento>();
         services.AddScoped<ConsultarResumos>();
 
         return services;

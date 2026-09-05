@@ -1,6 +1,8 @@
 using Fiscal.Api.Endpoints;
 using Fiscal.Api.Seguranca;
+using Fiscal.Domain.Lotes;
 using Fiscal.Infrastructure;
+using Fiscal.Infrastructure.Armazenamento;
 using Fiscal.Infrastructure.Mensageria;
 using Scalar.AspNetCore;
 
@@ -9,7 +11,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Primeira barreira de tamanho, antes de qualquer código nosso rodar. A segunda
 // está no endpoint, para o caso de o cliente omitir ou mentir no Content-Length.
 builder.WebHost.ConfigureKestrel(kestrel =>
-    kestrel.Limits.MaxRequestBodySize = DocumentosEndpoints.TamanhoMaximoDoXml);
+    kestrel.Limits.MaxRequestBodySize = LotesEndpoints.TamanhoMaximoDoLote);
+
+// O multipart tem limite próprio, independente do limite de corpo do Kestrel.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(opcoes =>
+{
+    opcoes.MultipartBodyLengthLimit = LotesEndpoints.TamanhoMaximoDoLote;
+    opcoes.ValueCountLimit = LoteDeIngestao.MaximoDeArquivos * 4;
+});
 
 builder.Services.AddFiscalInfrastructure(
     builder.Configuration.GetConnectionString("Fiscal")
@@ -33,12 +42,23 @@ else
     builder.Services.AddPublicadorRabbitMq(new OpcoesRabbitMq { Uri = brokerUri });
 }
 
+builder.Services.AddArmazenamentoDeXml(new OpcoesDeArmazenamento
+{
+    Endpoint = builder.Configuration["Armazenamento:Endpoint"]
+        ?? throw new InvalidOperationException("Armazenamento:Endpoint não configurado."),
+    AccessKey = builder.Configuration["Armazenamento:AccessKey"]
+        ?? throw new InvalidOperationException("Armazenamento:AccessKey não configurado."),
+    SecretKey = builder.Configuration["Armazenamento:SecretKey"]
+        ?? throw new InvalidOperationException("Armazenamento:SecretKey não configurado."),
+});
+
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
 await app.Services.MigrarBancoAsync(CancellationToken.None);
+await app.Services.PrepararArmazenamentoAsync(CancellationToken.None);
 
 // Erro não tratado vira ProblemDetails genérico. Sem isto, o Kestrel em ambiente
 // de desenvolvimento devolve a página de exceção com stack trace, caminho de
@@ -61,7 +81,7 @@ app.MapScalarApiReference();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).ExcludeFromDescription();
 
-app.MapDocumentos();
+app.MapLotes();
 app.MapConsultas();
 app.MapResumos();
 

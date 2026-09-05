@@ -19,7 +19,7 @@ builder.Services.AddFiscalInfrastructure(
     builder.Configuration.GetConnectionString("Fiscal")
     ?? throw new InvalidOperationException("ConnectionStrings:Fiscal não configurada."));
 
-builder.Services.AddConsumidorDeResumo(
+builder.Services.AddConsumidorDeIngestao(
     new OpcoesRabbitMq
     {
         Uri = builder.Configuration.GetConnectionString("RabbitMq")

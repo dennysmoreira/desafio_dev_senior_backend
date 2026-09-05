@@ -1,5 +1,5 @@
 using System.Reflection;
-using Fiscal.Application.Documentos;
+using Fiscal.Application.Lotes;
 using Fiscal.Domain.Documentos;
 using Fiscal.Infrastructure.Persistencia;
 using NetArchTest.Rules;
@@ -30,7 +30,7 @@ namespace Fiscal.ArchitectureTests;
 public sealed class RegrasDeArquiteturaTests
 {
     private static readonly Assembly Dominio = typeof(DocumentoFiscal).Assembly;
-    private static readonly Assembly Aplicacao = typeof(RegistrarDocumento).Assembly;
+    private static readonly Assembly Aplicacao = typeof(IngerirArquivo).Assembly;
     private static readonly Assembly Api = typeof(Program).Assembly;
 
     private static readonly Assembly Worker = typeof(Fiscal.Worker.PontoDeEntrada).Assembly;
