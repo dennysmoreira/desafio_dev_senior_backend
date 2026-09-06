@@ -380,6 +380,14 @@ parser não extrai.
 Blob fora do banco mantém a tabela principal enxuta e permite trocar o provedor sem
 tocar em schema.
 
+**PostgreSQL entre os relacionais**, por três motivos concretos deste código: o relay
+do outbox usa `FOR UPDATE SKIP LOCKED`, que é de primeira classe aqui e permite várias
+instâncias varrerem a mesma tabela sem disputar linha (MySQL 8 e SQL Server têm
+equivalente — a diferença é de conforto, não de capacidade); `timestamptz` guarda
+instante com semântica correta, o que importa num domínio em que a data de emissão
+vem com fuso; e não há licença nem instalador no caminho de quem clonar o repositório
+— um container e o banco está de pé.
+
 ### 7. Camadas com dependências verificadas
 
 `Domain` → `Application` → `Infrastructure` → `Api`/`Worker`. O domínio não tem **um
